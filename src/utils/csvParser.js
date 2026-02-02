@@ -90,17 +90,18 @@ export function transformCSVToAnalytics(csvData) {
   // Normalize column names (X exports vary significantly)
   const normalizedData = csvData.map((row, index) => {
     // Try many possible column name variations
+    // X Analytics 2024+ uses "Post text", "Post id", etc.
     const text = findValue(row,
-      'Tweet text', 'tweet_text', 'text', 'Tweet', 'tweet', 'content', 'post_text', 'Post text'
+      'post_text', 'Post text', 'Tweet text', 'tweet_text', 'text', 'Tweet', 'tweet', 'content'
     );
 
     const time = findValue(row,
-      'time', 'Time', 'date', 'Date', 'created_at', 'Created at', 'posted_at', 'Posted at',
+      'date', 'Date', 'time', 'Time', 'created_at', 'Created at', 'posted_at', 'Posted at',
       'tweet_time', 'post_time', 'timestamp', 'Timestamp'
     );
 
     const id = findValue(row,
-      'Tweet id', 'tweet_id', 'id', 'ID', 'Tweet ID', 'post_id'
+      'post_id', 'Post id', 'Tweet id', 'tweet_id', 'id', 'ID', 'Tweet ID'
     ) || `generated_${index}`;
 
     const impressions = parseInt(findValue(row,
@@ -111,9 +112,16 @@ export function transformCSVToAnalytics(csvData) {
       'engagements', 'Engagements', 'total_engagements', 'engagement_count'
     ) || '0', 10);
 
-    const retweets = parseInt(findValue(row,
-      'retweets', 'Retweets', 'reposts', 'Reposts', 'repost_count', 'retweet_count'
+    // X now uses "Reposts" instead of "Retweets", and has separate "Shares"
+    const reposts = parseInt(findValue(row,
+      'reposts', 'Reposts', 'retweets', 'Retweets', 'repost_count', 'retweet_count'
     ) || '0', 10);
+
+    const shares = parseInt(findValue(row,
+      'shares', 'Shares', 'share_count'
+    ) || '0', 10);
+
+    const retweets = reposts + shares; // Combine reposts and shares
 
     const replies = parseInt(findValue(row,
       'replies', 'Replies', 'reply_count', 'comments', 'Comments'
@@ -128,11 +136,15 @@ export function transformCSVToAnalytics(csvData) {
     ) || '0', 10);
 
     const urlClicks = parseInt(findValue(row,
-      'url_clicks', 'URL clicks', 'link_clicks', 'Link clicks', 'clicks'
+      'url_clicks', 'URL clicks', 'URL Clicks', 'link_clicks', 'Link clicks', 'clicks'
     ) || '0', 10);
 
     const profileClicks = parseInt(findValue(row,
-      'user_profile_clicks', 'profile_clicks', 'Profile clicks', 'User profile clicks'
+      'profile_visits', 'Profile visits', 'user_profile_clicks', 'profile_clicks', 'Profile clicks', 'User profile clicks'
+    ) || '0', 10);
+
+    const newFollows = parseInt(findValue(row,
+      'new_follows', 'New follows', 'follows', 'Follows'
     ) || '0', 10);
 
     if (index === 0) {
@@ -151,6 +163,7 @@ export function transformCSVToAnalytics(csvData) {
       bookmarks,
       urlClicks,
       profileClicks,
+      newFollows,
     };
   });
 
