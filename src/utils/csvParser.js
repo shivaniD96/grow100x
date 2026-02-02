@@ -94,10 +94,10 @@ function parseCSVLine(line) {
 
 /**
  * Detect the type of CSV based on columns
- * UPDATED: v2 - Account Overview detection comes FIRST
+ * UPDATED: v3 - Content Analytics (post_id) checked FIRST
  */
 export function detectCSVType(csvData) {
-  console.log('=== CSV TYPE DETECTION v2 ===');
+  console.log('=== CSV TYPE DETECTION v3 ===');
 
   if (csvData.length === 0) return CSV_TYPES.UNKNOWN;
 
@@ -116,26 +116,29 @@ export function detectCSVType(csvData) {
   const hasProfileVisits = normalizedKeys.includes('profile_visits');
   const hasEngagements = normalizedKeys.includes('engagements');
 
-  console.log('Detection flags:', { hasDate, hasImpressions, hasNewFollows, hasUnfollows, hasProfileVisits, hasEngagements });
+  // Check for post-specific columns (Content Analytics)
+  const hasPostId = normalizedKeys.includes('post_id');
+  const hasPostText = normalizedKeys.includes('post_text');
+  const hasPostLink = normalizedKeys.includes('post_link');
+  const hasTweet = normalizedKeys.some(k => k.includes('tweet'));
 
-  // ACCOUNT OVERVIEW: Check FIRST - has "impressions" + account-specific metrics
-  // This MUST be checked before Video Analytics because Account Overview may have video_views column
-  if (hasImpressions && (hasNewFollows || hasUnfollows || hasProfileVisits || hasEngagements)) {
-    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (has impressions + account metrics)');
-    return CSV_TYPES.ACCOUNT_OVERVIEW;
+  console.log('Detection flags:', {
+    hasDate, hasImpressions, hasNewFollows, hasUnfollows, hasProfileVisits, hasEngagements,
+    hasPostId, hasPostText, hasPostLink, hasTweet
+  });
+
+  // CONTENT ANALYTICS: Check FIRST - has "post_id" or "post_text" or "post_link"
+  // This is per-post data, not daily aggregates
+  if (hasPostId || hasPostText || hasPostLink || hasTweet) {
+    console.log('>>> DETECTED: CONTENT_ANALYTICS (has post_id/post_text/post_link)');
+    return CSV_TYPES.CONTENT_ANALYTICS;
   }
 
-  // CONTENT ANALYTICS: has "post_id" or "post_text" or "post_link"
-  const hasPostColumns = normalizedKeys.some(k =>
-    k.includes('post_id') ||
-    k.includes('post_text') ||
-    k.includes('post_link') ||
-    k.includes('tweet')
-  );
-
-  if (hasPostColumns) {
-    console.log('>>> DETECTED: CONTENT_ANALYTICS (has post columns)');
-    return CSV_TYPES.CONTENT_ANALYTICS;
+  // ACCOUNT OVERVIEW: has "impressions" + account-specific metrics like unfollows
+  // Must have "unfollows" to distinguish from Content Analytics (which doesn't have unfollows)
+  if (hasImpressions && hasUnfollows) {
+    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (has impressions + unfollows)');
+    return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
   // VIDEO ANALYTICS: has watch_time/completion_rate but NO impressions
@@ -151,9 +154,9 @@ export function detectCSVType(csvData) {
     return CSV_TYPES.VIDEO_ANALYTICS;
   }
 
-  // Fallback: if has date and impressions, treat as Account Overview
+  // Fallback: if has date and impressions (but no post columns), treat as Account Overview
   if (hasDate && hasImpressions) {
-    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (fallback)');
+    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (fallback: has date + impressions)');
     return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
