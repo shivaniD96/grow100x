@@ -6,7 +6,6 @@ import {
   initiateOAuth,
   handleOAuthCallback,
   clearTokens,
-  hasValidSession,
   fetchUserProfile,
   fetchUserTweets,
   transformTweetsToAnalytics,
@@ -14,11 +13,9 @@ import {
   calculateHookPerformance
 } from '../services/xApi';
 import {
-  parseCSV,
-  transformCSVToAnalytics,
-  transformCSVToTopPosts,
-  calculateCSVHookPerformance,
-  recalculateFromTweets
+  processCSVFile,
+  mergeAnalyticsData,
+  CSV_TYPES
 } from '../utils/csvParser';
 
 export const useAnalytics = () => {
@@ -33,7 +30,12 @@ export const useAnalytics = () => {
   const [timeRange, setTimeRange] = useState('30d');
   const [isDemoMode, setIsDemoMode] = useState(() => storage.get('x_demo_mode', false));
   const [isCSVMode, setIsCSVMode] = useState(() => storage.get('x_csv_mode', false));
-  const [csvRawTweets, setCsvRawTweets] = useState(() => storage.get('x_csv_tweets', []));
+
+  // Store merged CSV data
+  const [csvData, setCsvData] = useState(() => storage.get('x_csv_data', null));
+
+  // Track which CSV types have been uploaded
+  const [uploadedTypes, setUploadedTypes] = useState(() => storage.get('x_csv_types', []));
 
   // Handle OAuth callback on mount
   useEffect(() => {
@@ -41,7 +43,6 @@ export const useAnalytics = () => {
       try {
         const result = await handleOAuthCallback();
         if (result) {
-          // OAuth successful
           storage.set('x_connected', true);
           storage.set('x_demo_mode', false);
           storage.set('x_csv_mode', false);
@@ -60,28 +61,42 @@ export const useAnalytics = () => {
 
   // Load CSV data on mount if in CSV mode
   useEffect(() => {
-    if (isCSVMode && csvRawTweets.length > 0 && !analytics) {
-      loadCSVData(csvRawTweets);
+    if (isCSVMode && csvData && !analytics) {
+      loadCSVData(csvData);
     }
-  }, [isCSVMode]);
+  }, [isCSVMode, csvData]);
 
   // Load CSV data helper
-  const loadCSVData = useCallback((rawTweets) => {
-    const analyticsData = recalculateFromTweets(rawTweets);
-    const topPostsData = transformCSVToTopPosts(rawTweets, 5);
-    const hookPerfData = calculateCSVHookPerformance(rawTweets);
+  const loadCSVData = useCallback((data) => {
+    if (!data) return;
+
+    // Create analytics object from merged data
+    const analyticsData = {
+      impressionsData: data.impressionsData || [],
+      engagementData: data.engagementData || []
+    };
 
     setAnalytics(analyticsData);
-    setTopPosts(topPostsData);
-    setHookPerformance(hookPerfData);
+    setTopPosts(data.topPosts || []);
+    setHookPerformance(data.hookPerformance || []);
+
+    // Create account stats from summary
     setAccountStats({
       username: 'CSV Import',
       displayName: 'Your Data',
-      followers: 0,
+      followers: data.accountOverview?.summary?.totalNewFollows || 0,
       following: 0,
-      profileImage: null
+      profileImage: null,
+      // Include additional data types info
+      hasAccountOverview: !!data.accountOverview,
+      hasContentAnalytics: !!data.contentAnalytics,
+      hasVideoAnalytics: !!data.videoAnalytics,
     });
-    setInsights(generateInsights(analyticsData, topPostsData, hookPerfData));
+
+    // Generate insights if we have data
+    if (analyticsData.impressionsData.length > 0) {
+      setInsights(generateInsights(analyticsData, data.topPosts || [], data.hookPerformance || []));
+    }
   }, []);
 
   // Import CSV files
@@ -90,38 +105,42 @@ export const useAnalytics = () => {
     setError(null);
 
     try {
-      let allTweets = [...csvRawTweets];
-      const existingIds = new Set(allTweets.map(t => t.id));
+      const processedFiles = [];
+      const newTypes = [];
 
       for (const file of files) {
-        const csvData = parseCSV(file.content);
-        const { rawTweets } = transformCSVToAnalytics(csvData);
+        console.log('Processing file:', file.name);
+        const result = processCSVFile(file.content);
+        processedFiles.push(result);
 
-        // Merge, avoiding duplicates
-        for (const tweet of rawTweets) {
-          if (!existingIds.has(tweet.id)) {
-            allTweets.push(tweet);
-            existingIds.add(tweet.id);
-          }
+        if (!newTypes.includes(result.type)) {
+          newTypes.push(result.type);
         }
+        console.log('File processed as:', result.type);
       }
 
-      // Sort by date
-      allTweets.sort((a, b) => new Date(a.time) - new Date(b.time));
+      // Merge all processed data
+      const mergedData = mergeAnalyticsData(processedFiles);
+      console.log('Merged data:', mergedData);
+
+      // Update uploaded types
+      const allTypes = [...new Set([...uploadedTypes, ...newTypes])];
 
       // Store in localStorage
-      storage.set('x_csv_tweets', allTweets);
+      storage.set('x_csv_data', mergedData);
+      storage.set('x_csv_types', allTypes);
       storage.set('x_csv_mode', true);
       storage.set('x_connected', true);
       storage.set('x_demo_mode', false);
 
-      setCsvRawTweets(allTweets);
+      setCsvData(mergedData);
+      setUploadedTypes(allTypes);
       setIsCSVMode(true);
       setIsDemoMode(false);
       setIsConnected(true);
 
       // Load the data
-      loadCSVData(allTweets);
+      loadCSVData(mergedData);
 
     } catch (err) {
       console.error('CSV import error:', err);
@@ -129,7 +148,7 @@ export const useAnalytics = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [csvRawTweets, loadCSVData]);
+  }, [uploadedTypes, loadCSVData]);
 
   // Connect to X (real OAuth or demo mode)
   const connect = useCallback(async (useDemo = false) => {
@@ -138,7 +157,6 @@ export const useAnalytics = () => {
 
     try {
       if (useDemo) {
-        // Demo mode - use mock data
         await new Promise(resolve => setTimeout(resolve, 1000));
         storage.set('x_connected', true);
         storage.set('x_demo_mode', true);
@@ -147,9 +165,7 @@ export const useAnalytics = () => {
         setIsCSVMode(false);
         setIsConnected(true);
       } else {
-        // Real OAuth flow - redirects to X
         await initiateOAuth();
-        // Note: This will redirect, so code below won't execute
       }
     } catch (err) {
       console.error('Connection error:', err);
@@ -165,12 +181,14 @@ export const useAnalytics = () => {
     storage.remove('x_connected');
     storage.remove('x_demo_mode');
     storage.remove('x_csv_mode');
-    storage.remove('x_csv_tweets');
+    storage.remove('x_csv_data');
+    storage.remove('x_csv_types');
     storage.remove('x_user_id');
     setIsConnected(false);
     setIsDemoMode(false);
     setIsCSVMode(false);
-    setCsvRawTweets([]);
+    setCsvData(null);
+    setUploadedTypes([]);
     setAnalytics(null);
     setInsights([]);
     setTopPosts([]);
@@ -183,9 +201,9 @@ export const useAnalytics = () => {
   const fetchAnalytics = useCallback(async () => {
     if (!isConnected) return;
 
-    // If CSV mode, reload from stored tweets
-    if (isCSVMode && csvRawTweets.length > 0) {
-      loadCSVData(csvRawTweets);
+    // If CSV mode, reload from stored data
+    if (isCSVMode && csvData) {
+      loadCSVData(csvData);
       return;
     }
 
@@ -196,7 +214,6 @@ export const useAnalytics = () => {
 
     try {
       if (isDemoMode) {
-        // Use mock data for demo mode
         await new Promise(resolve => setTimeout(resolve, 500));
         const data = generateMockAnalytics(days);
         setAnalytics(data);
@@ -205,21 +222,14 @@ export const useAnalytics = () => {
         setAccountStats(mockAccountStats);
         setInsights(generateInsights(data, mockTopPosts, mockHookPerformance));
       } else {
-        // Fetch real data from X API
         const userProfile = await fetchUserProfile();
-
-        // Store user ID for future requests
         storage.set('x_user_id', userProfile.id);
 
-        // Fetch tweets
         const tweets = await fetchUserTweets(userProfile.id, days);
-
-        // Transform data to match our format
         const analyticsData = transformTweetsToAnalytics(tweets, userProfile, days);
         const topPostsData = transformToTopPosts(tweets, 5);
         const hookPerfData = calculateHookPerformance(tweets);
 
-        // Create account stats from profile
         const stats = {
           username: userProfile.username,
           displayName: userProfile.displayName,
@@ -238,7 +248,6 @@ export const useAnalytics = () => {
       console.error('Failed to fetch analytics:', err);
       setError(err.message);
 
-      // Fall back to demo mode on error
       if (!isDemoMode && !isCSVMode) {
         console.log('Falling back to demo mode');
         const data = generateMockAnalytics(days);
@@ -251,7 +260,7 @@ export const useAnalytics = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, timeRange, isDemoMode, isCSVMode, csvRawTweets, loadCSVData]);
+  }, [isConnected, timeRange, isDemoMode, isCSVMode, csvData, loadCSVData]);
 
   // Refresh insights
   const refreshInsights = useCallback(() => {
@@ -269,13 +278,25 @@ export const useAnalytics = () => {
 
   // Calculate summary metrics
   const summaryMetrics = analytics ? {
-    totalImpressions: analytics.impressionsData.reduce((sum, d) => sum + d.impressions, 0),
-    totalLikes: analytics.engagementData.reduce((sum, d) => sum + d.likes, 0),
-    totalRetweets: analytics.engagementData.reduce((sum, d) => sum + d.retweets, 0),
-    totalReplies: analytics.engagementData.reduce((sum, d) => sum + d.replies, 0),
-    currentFollowers: analytics.impressionsData[analytics.impressionsData.length - 1]?.followers || 0,
+    totalImpressions: analytics.impressionsData?.reduce((sum, d) => sum + (d.impressions || 0), 0) || 0,
+    totalLikes: analytics.engagementData?.reduce((sum, d) => sum + (d.likes || 0), 0) || 0,
+    totalRetweets: analytics.engagementData?.reduce((sum, d) => sum + (d.retweets || 0), 0) || 0,
+    totalReplies: analytics.engagementData?.reduce((sum, d) => sum + (d.replies || 0), 0) || 0,
+    currentFollowers: analytics.impressionsData?.[analytics.impressionsData.length - 1]?.followers || 0,
     avgEngagementRate: calculateAvgEngagementRate(analytics),
+    // Video metrics if available
+    totalViews: csvData?.videoAnalytics?.summary?.totalViews || 0,
+    totalWatchTime: csvData?.videoAnalytics?.summary?.totalWatchTimeMinutes || 0,
   } : null;
+
+  // Get counts for display
+  const getDataCounts = () => {
+    if (!csvData) return { posts: 0, days: 0 };
+    return {
+      posts: csvData.contentAnalytics?.posts?.length || 0,
+      days: csvData.accountOverview?.dailyData?.length || analytics?.impressionsData?.length || 0,
+    };
+  };
 
   return {
     isConnected,
@@ -290,7 +311,9 @@ export const useAnalytics = () => {
     timeRange,
     isDemoMode,
     isCSVMode,
-    csvTweetCount: csvRawTweets.length,
+    csvData,
+    uploadedTypes,
+    dataCounts: getDataCounts(),
     setTimeRange,
     connect,
     disconnect,
@@ -304,9 +327,9 @@ export const useAnalytics = () => {
 function calculateAvgEngagementRate(analytics) {
   if (!analytics?.impressionsData || !analytics?.engagementData) return 0;
 
-  const totalImpressions = analytics.impressionsData.reduce((sum, d) => sum + d.impressions, 0);
+  const totalImpressions = analytics.impressionsData.reduce((sum, d) => sum + (d.impressions || 0), 0);
   const totalEngagement = analytics.engagementData.reduce((sum, d) =>
-    sum + d.likes + d.retweets + d.replies, 0
+    sum + (d.likes || 0) + (d.retweets || 0) + (d.replies || 0), 0
   );
 
   if (totalImpressions === 0) return 0;

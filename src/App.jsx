@@ -34,7 +34,8 @@ export default function App() {
     timeRange,
     isDemoMode,
     isCSVMode,
-    csvTweetCount,
+    dataCounts,
+    uploadedTypes,
     setTimeRange,
     connect,
     disconnect,
@@ -67,7 +68,7 @@ export default function App() {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 rounded-lg">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${isDemoMode ? 'bg-yellow-400' : isCSVMode ? 'bg-blue-400' : 'bg-green-400'}`} />
                 <span className="text-sm text-gray-300">
-                  {isDemoMode ? 'Demo Mode' : isCSVMode ? `CSV (${csvTweetCount} tweets)` : `@${accountStats?.username || 'connected'}`}
+                  {isDemoMode ? 'Demo Mode' : isCSVMode ? `CSV Import (${dataCounts.posts || dataCounts.days} entries)` : `@${accountStats?.username || 'connected'}`}
                 </span>
               </div>
               <button

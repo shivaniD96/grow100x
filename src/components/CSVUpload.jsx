@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, X, CheckCircle2, AlertCircle, Plus } from 'lucide-react';
+import { Upload, FileText, X, CheckCircle2, AlertCircle, Plus, BarChart2, FileVideo, Users } from 'lucide-react';
 
 export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
   const [files, setFiles] = useState([]);
@@ -37,7 +37,7 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files);
     addFiles(selectedFiles);
-    e.target.value = ''; // Reset input
+    e.target.value = '';
   };
 
   const addFiles = (newFiles) => {
@@ -54,6 +54,20 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
 
   const removeFile = (index) => {
     setFiles(files.filter((_, i) => i !== index));
+  };
+
+  const getFileTypeInfo = (fileName) => {
+    const name = fileName.toLowerCase();
+    if (name.includes('account_overview') || name.includes('overview')) {
+      return { type: 'Account Overview', icon: Users, color: 'text-blue-400' };
+    }
+    if (name.includes('video') || name.includes('watch')) {
+      return { type: 'Video Analytics', icon: FileVideo, color: 'text-purple-400' };
+    }
+    if (name.includes('content') || name.includes('analytics') || name.includes('tweet')) {
+      return { type: 'Content Analytics', icon: BarChart2, color: 'text-green-400' };
+    }
+    return { type: 'Analytics', icon: FileText, color: 'text-violet-400' };
   };
 
   const processFiles = async () => {
@@ -93,6 +107,22 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
 
   return (
     <div className="w-full max-w-lg mx-auto">
+      {/* Supported File Types */}
+      <div className="mb-6 grid grid-cols-3 gap-2">
+        <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-center">
+          <Users className="w-5 h-5 text-blue-400 mx-auto mb-1" />
+          <p className="text-xs text-blue-400 font-medium">Account Overview</p>
+        </div>
+        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-center">
+          <BarChart2 className="w-5 h-5 text-green-400 mx-auto mb-1" />
+          <p className="text-xs text-green-400 font-medium">Content Analytics</p>
+        </div>
+        <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg text-center">
+          <FileVideo className="w-5 h-5 text-purple-400 mx-auto mb-1" />
+          <p className="text-xs text-purple-400 font-medium">Video Analytics</p>
+        </div>
+      </div>
+
       {/* Drop Zone */}
       <div
         onDragOver={handleDragOver}
@@ -122,7 +152,7 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
           {isDragging ? 'Drop your CSV files here' : 'Drag & drop CSV files here'}
         </p>
         <p className="text-sm text-gray-500">
-          or click to browse
+          Upload any of the 3 file types above
         </p>
       </div>
 
@@ -131,25 +161,33 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
         <div className="mt-4 space-y-2">
           <p className="text-sm text-gray-400 mb-2">{files.length} file(s) selected:</p>
 
-          {files.map((file, index) => (
-            <div
-              key={index}
-              className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700"
-            >
-              <FileText className="w-5 h-5 text-violet-400 shrink-0" />
-              <span className="text-sm text-gray-300 truncate flex-1">{file.name}</span>
-              <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeFile(index);
-                }}
-                className="p-1 hover:bg-gray-700 rounded transition-colors"
+          {files.map((file, index) => {
+            const fileInfo = getFileTypeInfo(file.name);
+            const Icon = fileInfo.icon;
+
+            return (
+              <div
+                key={index}
+                className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700"
               >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-          ))}
+                <Icon className={`w-5 h-5 ${fileInfo.color} shrink-0`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-300 truncate">{file.name}</p>
+                  <p className={`text-xs ${fileInfo.color}`}>{fileInfo.type}</p>
+                </div>
+                <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeFile(index);
+                  }}
+                  className="p-1 hover:bg-gray-700 rounded transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+            );
+          })}
 
           {/* Add More Button */}
           <button
@@ -172,13 +210,13 @@ export const CSVUpload = ({ onUpload, onCancel, existingFiles = [] }) => {
 
       {/* Instructions */}
       <div className="mt-6 p-4 bg-gray-800/30 rounded-lg border border-gray-700/50">
-        <h4 className="text-sm font-medium text-gray-300 mb-2">How to export from X Analytics:</h4>
-        <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
-          <li>Go to analytics.x.com</li>
-          <li>Click on "Tweets" tab</li>
+        <h4 className="text-sm font-medium text-gray-300 mb-3">How to export from X Analytics:</h4>
+        <ol className="text-xs text-gray-500 space-y-2 list-decimal list-inside">
+          <li>Go to <span className="text-gray-400">analytics.x.com</span></li>
+          <li>Navigate to <span className="text-gray-400">Account Overview</span>, <span className="text-gray-400">Posts</span>, or <span className="text-gray-400">Videos</span></li>
           <li>Select your date range</li>
-          <li>Click "Export data" button</li>
-          <li>Upload the downloaded CSV here</li>
+          <li>Click <span className="text-gray-400">Export data</span> button</li>
+          <li>Upload all CSV files here for complete analytics</li>
         </ol>
       </div>
 
