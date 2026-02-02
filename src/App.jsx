@@ -70,14 +70,12 @@ export default function App() {
                   {isDemoMode ? 'Demo Mode' : isCSVMode ? `CSV (${csvTweetCount} tweets)` : `@${accountStats?.username || 'connected'}`}
                 </span>
               </div>
-              {(isDemoMode || isCSVMode) && (
-                <button
-                  onClick={disconnect}
-                  className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Disconnect
-                </button>
-              )}
+              <button
+                onClick={disconnect}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Disconnect
+              </button>
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
