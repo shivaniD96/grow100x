@@ -606,6 +606,8 @@ export function processCSVFile(content) {
  * Merge multiple CSV results into unified analytics data
  */
 export function mergeAnalyticsData(dataArray) {
+  console.log('Merging', dataArray.length, 'CSV files');
+
   const merged = {
     accountOverview: null,
     contentAnalytics: null,
@@ -625,6 +627,8 @@ export function mergeAnalyticsData(dataArray) {
   };
 
   dataArray.forEach(data => {
+    console.log('Processing CSV type:', data.type, 'with summary:', data.summary);
+
     switch (data.type) {
       case CSV_TYPES.ACCOUNT_OVERVIEW:
         merged.accountOverview = data;
@@ -633,16 +637,17 @@ export function mergeAnalyticsData(dataArray) {
           merged.impressionsData = data.impressionsData;
           merged.engagementData = data.engagementData;
         }
-        merged.summary.totalImpressions += data.summary.totalImpressions;
-        merged.summary.totalLikes += data.summary.totalLikes;
-        merged.summary.totalEngagements += data.summary.totalEngagements;
+        merged.summary.totalImpressions += data.summary.totalImpressions || 0;
+        merged.summary.totalLikes += data.summary.totalLikes || 0;
+        merged.summary.totalEngagements += data.summary.totalEngagements || 0;
+        console.log('After Account Overview merge, total impressions:', merged.summary.totalImpressions);
         break;
 
       case CSV_TYPES.CONTENT_ANALYTICS:
         merged.contentAnalytics = data;
         merged.topPosts = data.topPosts;
         merged.hookPerformance = data.hookPerformance;
-        merged.summary.totalPosts = data.summary.totalPosts;
+        merged.summary.totalPosts = data.summary.totalPosts || 0;
         // Use content data for charts if no account overview
         if (merged.impressionsData.length === 0) {
           merged.impressionsData = data.impressionsData;
@@ -650,17 +655,21 @@ export function mergeAnalyticsData(dataArray) {
         }
         // Add to totals if not already counted from account overview
         if (!merged.accountOverview) {
-          merged.summary.totalImpressions += data.summary.totalImpressions;
-          merged.summary.totalLikes += data.summary.totalLikes;
+          merged.summary.totalImpressions += data.summary.totalImpressions || 0;
+          merged.summary.totalLikes += data.summary.totalLikes || 0;
         }
+        console.log('After Content Analytics merge, total impressions:', merged.summary.totalImpressions);
         break;
 
       case CSV_TYPES.VIDEO_ANALYTICS:
         merged.videoAnalytics = data;
-        merged.summary.totalViews = data.summary.totalViews;
+        merged.summary.totalViews = data.summary.totalViews || 0;
         break;
     }
   });
+
+  console.log('Final merged summary:', merged.summary);
+  console.log('Final impressionsData length:', merged.impressionsData.length);
 
   return merged;
 }

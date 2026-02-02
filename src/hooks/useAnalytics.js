@@ -373,10 +373,21 @@ export const useAnalytics = () => {
   // For "All Time", use the raw CSV summary totals to ensure we show ALL data
   const useRawTotals = timeRange === 'all' && csvData?.summary;
 
+  // Debug: Log what we have
+  if (csvData) {
+    console.log('csvData.summary:', csvData.summary);
+    console.log('useRawTotals:', useRawTotals);
+    console.log('timeRange:', timeRange);
+  }
+
+  const calculatedImpressions = analytics?.impressionsData?.reduce((sum, d) => sum + (d.impressions || 0), 0) || 0;
+  const rawImpressions = csvData?.summary?.totalImpressions || 0;
+
+  console.log('Calculated impressions from analytics:', calculatedImpressions);
+  console.log('Raw impressions from csvData.summary:', rawImpressions);
+
   const summaryMetrics = analytics ? {
-    totalImpressions: useRawTotals
-      ? (csvData.summary.totalImpressions || 0)
-      : (analytics.impressionsData?.reduce((sum, d) => sum + (d.impressions || 0), 0) || 0),
+    totalImpressions: useRawTotals ? rawImpressions : calculatedImpressions,
     totalLikes: useRawTotals
       ? (csvData.summary.totalLikes || 0)
       : (analytics.engagementData?.reduce((sum, d) => sum + (d.likes || 0), 0) || 0),
@@ -388,7 +399,7 @@ export const useAnalytics = () => {
     totalViews: csvData?.videoAnalytics?.summary?.totalViews || 0,
     totalWatchTime: csvData?.videoAnalytics?.summary?.totalWatchTimeMinutes || 0,
     // Include raw totals for debugging
-    rawTotalImpressions: csvData?.summary?.totalImpressions || 0,
+    rawTotalImpressions: rawImpressions,
   } : null;
 
   // Get counts for display
