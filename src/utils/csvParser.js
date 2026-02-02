@@ -94,67 +94,70 @@ function parseCSVLine(line) {
 
 /**
  * Detect the type of CSV based on columns
+ * UPDATED: v2 - Account Overview detection comes FIRST
  */
 export function detectCSVType(csvData) {
+  console.log('=== CSV TYPE DETECTION v2 ===');
+
   if (csvData.length === 0) return CSV_TYPES.UNKNOWN;
 
   const keys = Object.keys(csvData[0]);
-  console.log('Detecting CSV type from keys:', keys);
+  console.log('Keys from first row:', keys);
 
   // Normalize keys for easier matching
   const normalizedKeys = keys.map(k => k.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, ''));
   console.log('Normalized keys:', normalizedKeys);
 
-  // Check for Account Overview FIRST - it has "impressions" as a main column
-  // X Analytics account exports have: Date, Impressions, Likes, Engagements, New follows, etc.
-  // This should be checked before Video Analytics because Account Overview may have video_views column
-  const hasDate = normalizedKeys.some(k => k === 'date');
-  const hasImpressions = normalizedKeys.some(k => k === 'impressions');
-  const hasAccountMetrics = normalizedKeys.some(k =>
-    k === 'new_follows' ||
-    k === 'unfollows' ||
-    k === 'profile_visits' ||
-    k === 'engagements'
-  );
+  // Check flags
+  const hasDate = normalizedKeys.includes('date');
+  const hasImpressions = normalizedKeys.includes('impressions');
+  const hasNewFollows = normalizedKeys.includes('new_follows');
+  const hasUnfollows = normalizedKeys.includes('unfollows');
+  const hasProfileVisits = normalizedKeys.includes('profile_visits');
+  const hasEngagements = normalizedKeys.includes('engagements');
 
-  // Account Overview: has "date" + "impressions" + account-specific metrics
-  if (hasDate && hasImpressions && hasAccountMetrics) {
-    console.log('Detected as ACCOUNT_OVERVIEW (has impressions + account metrics)');
+  console.log('Detection flags:', { hasDate, hasImpressions, hasNewFollows, hasUnfollows, hasProfileVisits, hasEngagements });
+
+  // ACCOUNT OVERVIEW: Check FIRST - has "impressions" + account-specific metrics
+  // This MUST be checked before Video Analytics because Account Overview may have video_views column
+  if (hasImpressions && (hasNewFollows || hasUnfollows || hasProfileVisits || hasEngagements)) {
+    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (has impressions + account metrics)');
     return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
-  // Content Analytics: has "post_id" or "post_text" or "post_link" or "tweet"
-  if (normalizedKeys.some(k =>
+  // CONTENT ANALYTICS: has "post_id" or "post_text" or "post_link"
+  const hasPostColumns = normalizedKeys.some(k =>
     k.includes('post_id') ||
     k.includes('post_text') ||
     k.includes('post_link') ||
     k.includes('tweet')
-  )) {
-    console.log('Detected as CONTENT_ANALYTICS (has post columns)');
+  );
+
+  if (hasPostColumns) {
+    console.log('>>> DETECTED: CONTENT_ANALYTICS (has post columns)');
     return CSV_TYPES.CONTENT_ANALYTICS;
   }
 
-  // Video Analytics: ONLY if it has watch_time/completion_rate but NOT impressions
-  // X Analytics video exports have: Date, Views, Watch Time (ms), Completion Rate, Average Watch Time (ms)
+  // VIDEO ANALYTICS: has watch_time/completion_rate but NO impressions
   const hasVideoMetrics = normalizedKeys.some(k =>
     k.includes('watch_time') ||
     k.includes('completion_rate') ||
     k.includes('average_watch_time')
   );
-  const hasViews = normalizedKeys.some(k => k === 'views');
+  const hasViews = normalizedKeys.includes('views');
 
   if (hasVideoMetrics && hasViews && !hasImpressions) {
-    console.log('Detected as VIDEO_ANALYTICS (has watch_time + views, no impressions)');
+    console.log('>>> DETECTED: VIDEO_ANALYTICS (has watch_time + views, no impressions)');
     return CSV_TYPES.VIDEO_ANALYTICS;
   }
 
   // Fallback: if has date and impressions, treat as Account Overview
   if (hasDate && hasImpressions) {
-    console.log('Detected as ACCOUNT_OVERVIEW (fallback: has date + impressions)');
+    console.log('>>> DETECTED: ACCOUNT_OVERVIEW (fallback)');
     return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
-  console.log('Could not detect CSV type');
+  console.log('>>> Could not detect CSV type');
   return CSV_TYPES.UNKNOWN;
 }
 
