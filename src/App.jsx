@@ -85,6 +85,7 @@ export default function App() {
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 90 days</option>
+                <option value="all">All Time</option>
               </select>
             </div>
           </div>
@@ -129,6 +130,7 @@ export default function App() {
                 summaryMetrics={summaryMetrics}
                 topPosts={topPosts}
                 onPostClick={setSelectedPost}
+                timeRange={timeRange}
               />
             )}
             {activeTab === 'insights' && (

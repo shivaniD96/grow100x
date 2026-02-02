@@ -16,8 +16,11 @@ export const Dashboard = ({
   topPosts,
   onPostClick,
   monetizationGoal = 5000000,
-  monetizationDeadline = null
+  monetizationDeadline = null,
+  timeRange = '30d'
 }) => {
+  // Get label for time range
+  const timeLabel = timeRange === '7d' ? '7d' : timeRange === '30d' ? '30d' : timeRange === '90d' ? '90d' : 'All';
   if (!analytics || !summaryMetrics) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -40,7 +43,7 @@ export const Dashboard = ({
         <MetricCard
           icon={Eye}
           iconColor="text-blue-400"
-          label="Impressions (30d)"
+          label={`Impressions (${timeLabel})`}
           value={formatNumber(summaryMetrics.totalImpressions)}
           trend="23%"
           trendDirection="up"
@@ -48,7 +51,7 @@ export const Dashboard = ({
         <MetricCard
           icon={Heart}
           iconColor="text-red-400"
-          label="Likes (30d)"
+          label={`Likes (${timeLabel})`}
           value={formatNumber(summaryMetrics.totalLikes)}
           trend="18%"
           trendDirection="up"

@@ -96,6 +96,11 @@ export const useAnalytics = () => {
   const filterByTimeRange = useCallback((dataArray, days, referenceDate) => {
     if (!dataArray || dataArray.length === 0) return dataArray;
 
+    // If days is Infinity (All Time), return all data without filtering
+    if (days === Infinity) {
+      return dataArray;
+    }
+
     const cutoffDate = new Date(referenceDate.getTime() - days * 24 * 60 * 60 * 1000);
 
     return dataArray.filter(item => {
@@ -114,7 +119,8 @@ export const useAnalytics = () => {
   const loadCSVData = useCallback((data, range = '30d') => {
     if (!data) return;
 
-    const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+    // "all" means no filtering - show all data
+    const days = range === 'all' ? Infinity : range === '7d' ? 7 : range === '30d' ? 30 : 90;
 
     // Find the most recent date in the data to use as reference
     // This way "last 7 days" means "7 days before the most recent data point"
@@ -136,24 +142,27 @@ export const useAnalytics = () => {
     };
 
     // Filter top posts by date range too (relative to most recent date)
-    const cutoffDate = new Date(mostRecentDate.getTime() - days * 24 * 60 * 60 * 1000);
-    const filteredTopPosts = (data.topPosts || []).filter(post => {
-      if (!post.date) return true;
-      // Parse relative dates like "2 days ago", "Yesterday", etc.
-      const dateMatch = post.date.match(/(\d+)\s*days?\s*ago/i);
-      if (dateMatch) {
-        const daysAgo = parseInt(dateMatch[1]);
-        return daysAgo <= days;
-      }
-      if (post.date.toLowerCase() === 'yesterday') return days >= 1;
-      if (post.date.toLowerCase() === 'today') return true;
-      // For absolute dates, try parsing
-      const postDate = new Date(post.date);
-      if (!isNaN(postDate.getTime())) {
-        return postDate >= cutoffDate;
-      }
-      return true;
-    });
+    // If "all time", include all posts
+    const filteredTopPosts = days === Infinity
+      ? (data.topPosts || [])
+      : (data.topPosts || []).filter(post => {
+          if (!post.date) return true;
+          // Parse relative dates like "2 days ago", "Yesterday", etc.
+          const dateMatch = post.date.match(/(\d+)\s*days?\s*ago/i);
+          if (dateMatch) {
+            const daysAgo = parseInt(dateMatch[1]);
+            return daysAgo <= days;
+          }
+          if (post.date.toLowerCase() === 'yesterday') return days >= 1;
+          if (post.date.toLowerCase() === 'today') return true;
+          // For absolute dates, try parsing
+          const cutoffDate = new Date(mostRecentDate.getTime() - days * 24 * 60 * 60 * 1000);
+          const postDate = new Date(post.date);
+          if (!isNaN(postDate.getTime())) {
+            return postDate >= cutoffDate;
+          }
+          return true;
+        });
 
     setAnalytics(analyticsData);
     setTopPosts(filteredTopPosts);
