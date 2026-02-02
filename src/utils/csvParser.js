@@ -105,16 +105,22 @@ export function detectCSVType(csvData) {
   const normalizedKeys = keys.map(k => k.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, ''));
   console.log('Normalized keys:', normalizedKeys);
 
-  // Video Analytics: has "views", "watch_time", "completion_rate", "video"
-  // X Analytics video exports have: Date, Views, Watch Time (ms), Completion Rate, Average Watch Time (ms)
-  if (normalizedKeys.some(k =>
-    k.includes('watch_time') ||
-    k.includes('completion_rate') ||
-    k.includes('average_watch_time') ||
-    k.includes('video_views') ||
-    (k === 'views' && normalizedKeys.some(nk => nk.includes('watch')))
-  )) {
-    return CSV_TYPES.VIDEO_ANALYTICS;
+  // Check for Account Overview FIRST - it has "impressions" as a main column
+  // X Analytics account exports have: Date, Impressions, Likes, Engagements, New follows, etc.
+  // This should be checked before Video Analytics because Account Overview may have video_views column
+  const hasDate = normalizedKeys.some(k => k === 'date');
+  const hasImpressions = normalizedKeys.some(k => k === 'impressions');
+  const hasAccountMetrics = normalizedKeys.some(k =>
+    k === 'new_follows' ||
+    k === 'unfollows' ||
+    k === 'profile_visits' ||
+    k === 'engagements'
+  );
+
+  // Account Overview: has "date" + "impressions" + account-specific metrics
+  if (hasDate && hasImpressions && hasAccountMetrics) {
+    console.log('Detected as ACCOUNT_OVERVIEW (has impressions + account metrics)');
+    return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
   // Content Analytics: has "post_id" or "post_text" or "post_link" or "tweet"
@@ -124,24 +130,31 @@ export function detectCSVType(csvData) {
     k.includes('post_link') ||
     k.includes('tweet')
   )) {
+    console.log('Detected as CONTENT_ANALYTICS (has post columns)');
     return CSV_TYPES.CONTENT_ANALYTICS;
   }
 
-  // Account Overview: has "date" with engagement metrics but no post_id/post_text
-  // X Analytics account exports have: Date, Impressions, Likes, Engagements, New follows, etc.
-  const hasDate = normalizedKeys.some(k => k === 'date');
-  const hasEngagementMetrics = normalizedKeys.some(k =>
-    k === 'impressions' ||
-    k === 'likes' ||
-    k === 'engagements' ||
-    k === 'new_follows' ||
-    k === 'profile_visits'
+  // Video Analytics: ONLY if it has watch_time/completion_rate but NOT impressions
+  // X Analytics video exports have: Date, Views, Watch Time (ms), Completion Rate, Average Watch Time (ms)
+  const hasVideoMetrics = normalizedKeys.some(k =>
+    k.includes('watch_time') ||
+    k.includes('completion_rate') ||
+    k.includes('average_watch_time')
   );
+  const hasViews = normalizedKeys.some(k => k === 'views');
 
-  if (hasDate && hasEngagementMetrics) {
+  if (hasVideoMetrics && hasViews && !hasImpressions) {
+    console.log('Detected as VIDEO_ANALYTICS (has watch_time + views, no impressions)');
+    return CSV_TYPES.VIDEO_ANALYTICS;
+  }
+
+  // Fallback: if has date and impressions, treat as Account Overview
+  if (hasDate && hasImpressions) {
+    console.log('Detected as ACCOUNT_OVERVIEW (fallback: has date + impressions)');
     return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
+  console.log('Could not detect CSV type');
   return CSV_TYPES.UNKNOWN;
 }
 
