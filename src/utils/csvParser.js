@@ -706,3 +706,4 @@ export function calculateCSVHookPerformance(posts) {
 export function recalculateFromTweets(posts) {
   return transformContentAnalytics(posts);
 }
+// Force rebuild Mon Feb  2 20:48:23 +04 2026
