@@ -17,18 +17,27 @@ export function parseCSV(csvText) {
 
   // Parse header row
   const headers = parseCSVLine(lines[0]);
+  console.log('CSV Headers found:', headers);
 
   // Parse data rows
   const data = [];
   for (let i = 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
-    if (values.length === headers.length) {
+    // Be more flexible - allow rows with fewer values (pad with empty strings)
+    if (values.length > 0) {
       const row = {};
       headers.forEach((header, index) => {
-        row[header.trim().toLowerCase().replace(/\s+/g, '_')] = values[index];
+        const normalizedHeader = header.trim().toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+        row[normalizedHeader] = values[index] || '';
       });
       data.push(row);
     }
+  }
+
+  console.log('CSV Rows parsed:', data.length);
+  if (data.length > 0) {
+    console.log('First row keys:', Object.keys(data[0]));
+    console.log('First row sample:', data[0]);
   }
 
   return data;
@@ -60,40 +69,146 @@ function parseCSVLine(line) {
 }
 
 /**
+ * Find a value from multiple possible column names
+ */
+function findValue(row, ...possibleNames) {
+  for (const name of possibleNames) {
+    const normalizedName = name.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
+    if (row[normalizedName] !== undefined && row[normalizedName] !== '') {
+      return row[normalizedName];
+    }
+  }
+  return '';
+}
+
+/**
  * Transform X Analytics CSV data to app format
  */
 export function transformCSVToAnalytics(csvData) {
-  // Normalize column names (X exports vary)
-  const normalizedData = csvData.map(row => ({
-    id: row.tweet_id || row.id || '',
-    text: row.tweet_text || row.text || row.tweet || '',
-    time: row.time || row.date || row.created_at || '',
-    impressions: parseInt(row.impressions || row.views || '0', 10),
-    engagements: parseInt(row.engagements || row.total_engagements || '0', 10),
-    engagementRate: parseFloat(row.engagement_rate || row['engagement_rate_(%)'] || '0'),
-    retweets: parseInt(row.retweets || row.reposts || '0', 10),
-    replies: parseInt(row.replies || '0', 10),
-    likes: parseInt(row.likes || row.favorites || '0', 10),
-    bookmarks: parseInt(row.bookmarks || '0', 10),
-    urlClicks: parseInt(row.url_clicks || row.link_clicks || '0', 10),
-    profileClicks: parseInt(row.user_profile_clicks || row.profile_clicks || '0', 10),
-  }));
+  console.log('Transforming CSV data, rows:', csvData.length);
 
-  // Filter out invalid rows
-  const validData = normalizedData.filter(row => row.text && row.time);
+  // Normalize column names (X exports vary significantly)
+  const normalizedData = csvData.map((row, index) => {
+    // Try many possible column name variations
+    const text = findValue(row,
+      'Tweet text', 'tweet_text', 'text', 'Tweet', 'tweet', 'content', 'post_text', 'Post text'
+    );
+
+    const time = findValue(row,
+      'time', 'Time', 'date', 'Date', 'created_at', 'Created at', 'posted_at', 'Posted at',
+      'tweet_time', 'post_time', 'timestamp', 'Timestamp'
+    );
+
+    const id = findValue(row,
+      'Tweet id', 'tweet_id', 'id', 'ID', 'Tweet ID', 'post_id'
+    ) || `generated_${index}`;
+
+    const impressions = parseInt(findValue(row,
+      'impressions', 'Impressions', 'views', 'Views', 'view_count', 'impression_count'
+    ) || '0', 10);
+
+    const engagements = parseInt(findValue(row,
+      'engagements', 'Engagements', 'total_engagements', 'engagement_count'
+    ) || '0', 10);
+
+    const retweets = parseInt(findValue(row,
+      'retweets', 'Retweets', 'reposts', 'Reposts', 'repost_count', 'retweet_count'
+    ) || '0', 10);
+
+    const replies = parseInt(findValue(row,
+      'replies', 'Replies', 'reply_count', 'comments', 'Comments'
+    ) || '0', 10);
+
+    const likes = parseInt(findValue(row,
+      'likes', 'Likes', 'favorites', 'Favorites', 'like_count', 'favourite_count'
+    ) || '0', 10);
+
+    const bookmarks = parseInt(findValue(row,
+      'bookmarks', 'Bookmarks', 'bookmark_count', 'saves', 'Saves'
+    ) || '0', 10);
+
+    const urlClicks = parseInt(findValue(row,
+      'url_clicks', 'URL clicks', 'link_clicks', 'Link clicks', 'clicks'
+    ) || '0', 10);
+
+    const profileClicks = parseInt(findValue(row,
+      'user_profile_clicks', 'profile_clicks', 'Profile clicks', 'User profile clicks'
+    ) || '0', 10);
+
+    if (index === 0) {
+      console.log('First normalized row:', { id, text: text?.substring(0, 50), time, impressions, likes });
+    }
+
+    return {
+      id,
+      text,
+      time,
+      impressions,
+      engagements,
+      retweets,
+      replies,
+      likes,
+      bookmarks,
+      urlClicks,
+      profileClicks,
+    };
+  });
+
+  // Filter out invalid rows - be more lenient (only need text OR impressions > 0)
+  const validData = normalizedData.filter(row => {
+    const hasText = row.text && row.text.length > 0;
+    const hasMetrics = row.impressions > 0 || row.likes > 0 || row.engagements > 0;
+    return hasText || hasMetrics;
+  });
+
+  console.log('Valid rows after filtering:', validData.length);
 
   if (validData.length === 0) {
-    throw new Error('No valid tweet data found in CSV. Please check the file format.');
+    // Log what we got for debugging
+    console.error('No valid data found. Sample row:', normalizedData[0]);
+    throw new Error('No valid tweet data found in CSV. Please check the file format. Expected columns: Tweet text, time, impressions, likes, etc.');
   }
 
-  // Sort by date
-  validData.sort((a, b) => new Date(a.time) - new Date(b.time));
+  // Sort by date (handle rows without dates)
+  validData.sort((a, b) => {
+    const dateA = parseDate(a.time);
+    const dateB = parseDate(b.time);
+    if (!dateA && !dateB) return 0;
+    if (!dateA) return 1;
+    if (!dateB) return -1;
+    return dateA - dateB;
+  });
 
   // Group by date for time series
   const byDate = {};
+  let noDateCount = 0;
+
   validData.forEach(tweet => {
     const date = parseDate(tweet.time);
-    if (!date) return;
+    if (!date) {
+      noDateCount++;
+      // Use today's date for tweets without dates
+      const today = format(new Date(), 'yyyy-MM-dd');
+      if (!byDate[today]) {
+        byDate[today] = {
+          impressions: 0,
+          likes: 0,
+          retweets: 0,
+          replies: 0,
+          bookmarks: 0,
+          engagements: 0,
+          tweets: []
+        };
+      }
+      byDate[today].impressions += tweet.impressions;
+      byDate[today].likes += tweet.likes;
+      byDate[today].retweets += tweet.retweets;
+      byDate[today].replies += tweet.replies;
+      byDate[today].bookmarks += tweet.bookmarks;
+      byDate[today].engagements += tweet.engagements;
+      byDate[today].tweets.push(tweet);
+      return;
+    }
 
     const dateKey = format(date, 'yyyy-MM-dd');
 
@@ -117,6 +232,10 @@ export function transformCSVToAnalytics(csvData) {
     byDate[dateKey].engagements += tweet.engagements;
     byDate[dateKey].tweets.push(tweet);
   });
+
+  if (noDateCount > 0) {
+    console.log(`${noDateCount} tweets had no parseable date, grouped under today`);
+  }
 
   // Convert to arrays
   const impressionsData = [];
@@ -144,6 +263,8 @@ export function transformCSVToAnalytics(csvData) {
       });
     });
 
+  console.log('Analytics generated:', { days: impressionsData.length, tweets: validData.length });
+
   return { impressionsData, engagementData, rawTweets: validData };
 }
 
@@ -152,23 +273,23 @@ export function transformCSVToAnalytics(csvData) {
  */
 export function transformCSVToTopPosts(rawTweets, limit = 5) {
   return rawTweets
-    .filter(tweet => tweet.impressions > 0)
-    .sort((a, b) => b.impressions - a.impressions)
+    .filter(tweet => tweet.impressions > 0 || tweet.likes > 0)
+    .sort((a, b) => (b.impressions || b.likes * 100) - (a.impressions || a.likes * 100))
     .slice(0, limit)
     .map(tweet => {
       const date = parseDate(tweet.time);
 
       return {
         id: tweet.id,
-        text: tweet.text,
+        text: tweet.text || 'No text available',
         impressions: tweet.impressions,
         likes: tweet.likes,
         retweets: tweet.retweets,
         replies: tweet.replies,
         bookmarks: tweet.bookmarks,
-        date: date ? formatRelativeDate(date) : 'Unknown',
-        hookType: detectHookType(tweet.text),
-        contentType: detectContentType(tweet.text),
+        date: date ? formatRelativeDate(date) : 'Unknown date',
+        hookType: tweet.text ? detectHookType(tweet.text) : 'Unknown',
+        contentType: tweet.text ? detectContentType(tweet.text) : 'Unknown',
         postedAt: date ? format(date, 'h:mm a') : ''
       };
     });
@@ -181,6 +302,8 @@ export function calculateCSVHookPerformance(rawTweets) {
   const hookStats = {};
 
   rawTweets.forEach(tweet => {
+    if (!tweet.text) return;
+
     const hookType = detectHookType(tweet.text);
 
     if (!hookStats[hookType]) {
@@ -192,8 +315,8 @@ export function calculateCSVHookPerformance(rawTweets) {
       };
     }
 
-    hookStats[hookType].totalImpressions += tweet.impressions;
-    hookStats[hookType].totalEngagement += tweet.likes + tweet.retweets + tweet.replies;
+    hookStats[hookType].totalImpressions += tweet.impressions || 0;
+    hookStats[hookType].totalEngagement += (tweet.likes || 0) + (tweet.retweets || 0) + (tweet.replies || 0);
     hookStats[hookType].posts += 1;
   });
 
@@ -216,24 +339,37 @@ export function calculateCSVHookPerformance(rawTweets) {
 function parseDate(dateStr) {
   if (!dateStr) return null;
 
+  // Clean up the string
+  const cleaned = dateStr.toString().trim();
+  if (!cleaned) return null;
+
   // Try ISO format first
-  let date = new Date(dateStr);
+  let date = new Date(cleaned);
   if (!isNaN(date.getTime())) return date;
 
   // Try common X export formats
-  const formats = [
-    /(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/, // 2024-01-15 14:30
-    /(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})/, // 01/15/2024 14:30
-    /(\w+) (\d{1,2}), (\d{4}) at (\d{1,2}):(\d{2})/, // Jan 15, 2024 at 2:30
+  const patterns = [
+    // 2024-01-15 14:30:00 +0000
+    /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/,
+    // 01/15/2024 14:30
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/,
+    // Jan 15, 2024 at 2:30 PM
+    /^(\w+)\s+(\d{1,2}),?\s+(\d{4})/,
+    // 15 Jan 2024
+    /^(\d{1,2})\s+(\w+)\s+(\d{4})/,
   ];
 
-  for (const format of formats) {
-    const match = dateStr.match(format);
-    if (match) {
-      date = new Date(dateStr);
+  for (const pattern of patterns) {
+    if (pattern.test(cleaned)) {
+      date = new Date(cleaned);
       if (!isNaN(date.getTime())) return date;
     }
   }
+
+  // Try parsing just the date part if time parsing fails
+  const dateOnly = cleaned.split(/\s+/)[0];
+  date = new Date(dateOnly);
+  if (!isNaN(date.getTime())) return date;
 
   return null;
 }
@@ -242,6 +378,7 @@ function parseDate(dateStr) {
  * Detect content type from tweet text
  */
 function detectContentType(text) {
+  if (!text) return 'Unknown';
   if (text.length > 200) {
     return 'Long-form';
   }
@@ -275,14 +412,6 @@ export function mergeCSVData(existingData, newData) {
     ...newData.rawTweets.filter(t => !existingIds.has(t.id))
   ];
 
-  // Re-transform merged data
-  const analytics = transformCSVToAnalytics({
-    // Create a fake CSV data structure from merged tweets
-    length: mergedTweets.length,
-    map: (fn) => mergedTweets.map(fn)
-  });
-
-  // Actually, let's just recalculate from merged tweets
   return recalculateFromTweets(mergedTweets);
 }
 
@@ -294,9 +423,7 @@ export function recalculateFromTweets(rawTweets) {
   const byDate = {};
   rawTweets.forEach(tweet => {
     const date = parseDate(tweet.time);
-    if (!date) return;
-
-    const dateKey = format(date, 'yyyy-MM-dd');
+    const dateKey = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
     if (!byDate[dateKey]) {
       byDate[dateKey] = {
@@ -308,11 +435,11 @@ export function recalculateFromTweets(rawTweets) {
       };
     }
 
-    byDate[dateKey].impressions += tweet.impressions;
-    byDate[dateKey].likes += tweet.likes;
-    byDate[dateKey].retweets += tweet.retweets;
-    byDate[dateKey].replies += tweet.replies;
-    byDate[dateKey].bookmarks += tweet.bookmarks;
+    byDate[dateKey].impressions += tweet.impressions || 0;
+    byDate[dateKey].likes += tweet.likes || 0;
+    byDate[dateKey].retweets += tweet.retweets || 0;
+    byDate[dateKey].replies += tweet.replies || 0;
+    byDate[dateKey].bookmarks += tweet.bookmarks || 0;
   });
 
   // Convert to arrays
