@@ -1,109 +1,210 @@
-import { TrendingUp, Clock, AlertCircle, Target, Brain, Flame, Zap, Users } from 'lucide-react';
+import { TrendingUp, Clock, AlertCircle, Target, Brain, Flame, Zap, Users, BarChart2, Eye } from 'lucide-react';
 
-// Generate personalized insights based on analytics data
+// Helper to format numbers
+const formatNum = (num) => {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+};
+
+// Generate personalized insights based on REAL analytics data
 export const generateInsights = (analyticsData, topPosts, hookPerformance) => {
   const insights = [];
-  
-  // Find best performing hook type
-  const bestHook = hookPerformance.reduce((a, b) => 
-    a.avgImpressions > b.avgImpressions ? a : b
-  );
-  
+
+  // Safety check - if no data, return empty insights
+  if (!analyticsData || (!analyticsData.impressionsData?.length && !analyticsData.engagementData?.length)) {
+    return [{
+      id: 'no-data',
+      type: 'info',
+      icon: AlertCircle,
+      title: 'Upload your analytics data',
+      description: 'Import your X Analytics CSV files to see personalized insights based on your real performance data.',
+      action: 'Upload CSV files',
+      priority: 'high',
+      metric: 'Get started',
+    }];
+  }
+
+  // Calculate real metrics from data
+  const impressionsData = analyticsData.impressionsData || [];
+  const engagementData = analyticsData.engagementData || [];
+
+  const totalImpressions = impressionsData.reduce((sum, d) => sum + (d.impressions || 0), 0);
+  const totalLikes = engagementData.reduce((sum, d) => sum + (d.likes || 0), 0);
+  const totalRetweets = engagementData.reduce((sum, d) => sum + (d.retweets || 0), 0);
+  const totalReplies = engagementData.reduce((sum, d) => sum + (d.replies || 0), 0);
+  const totalEngagement = totalLikes + totalRetweets + totalReplies;
+  const engagementRate = totalImpressions > 0 ? ((totalEngagement / totalImpressions) * 100).toFixed(2) : 0;
+
+  const avgDailyImpressions = impressionsData.length > 0
+    ? Math.round(totalImpressions / impressionsData.length)
+    : 0;
+
+  // 1. Overall performance summary
   insights.push({
-    id: 'hook-superpower',
-    type: 'success',
-    icon: Flame,
-    title: `${bestHook.hook} hooks are your superpower`,
-    description: `Your ${bestHook.hook.toLowerCase()} takes get ${((bestHook.avgImpressions / 35000) * 100 - 100).toFixed(0)}% more impressions than average. Double down on these patterns.`,
-    action: `Generate more ${bestHook.hook.toLowerCase()} content`,
-    priority: 'high',
-    metric: `${(bestHook.avgImpressions / 1000).toFixed(0)}K avg impressions`,
-  });
-  
-  // Thread performance insight
-  insights.push({
-    id: 'thread-performance',
-    type: 'opportunity',
-    icon: TrendingUp,
-    title: 'Thread game is strong',
-    description: "Your threads average 85K impressions vs 32K for single tweets. You're on track for monetization - need 1.2M more impressions in 6 weeks.",
-    action: 'Post 2 threads/week minimum',
-    priority: 'high',
-    metric: '2.6x better than tweets',
-  });
-  
-  // Optimal posting times
-  insights.push({
-    id: 'posting-times',
+    id: 'performance-summary',
     type: 'insight',
-    icon: Clock,
-    title: 'Best posting times identified',
-    description: 'Your highest-performing posts went live between 8-9am EST and 7-8pm EST. Tuesday and Wednesday show 40% higher engagement.',
-    action: 'Schedule posts for optimal times',
-    priority: 'medium',
-    metric: '+40% on Tue/Wed',
-  });
-  
-  // Engagement warning
-  insights.push({
-    id: 'reply-game',
-    type: 'warning',
-    icon: AlertCircle,
-    title: 'Reply game needs work',
-    description: 'Your reply rate dropped 23% this week. Engagement breeds engagement - spend 30 min daily replying to bigger accounts.',
-    action: 'Increase community engagement',
-    priority: 'medium',
-    metric: '-23% this week',
-  });
-  
-  // Content focus opportunity
-  insights.push({
-    id: 'content-focus',
-    type: 'opportunity',
-    icon: Target,
-    title: 'Crypto content outperforms',
-    description: 'Base/L2 content gets 3x more bookmarks than general Web3 posts. Your audience wants alpha on specific ecosystems.',
-    action: 'Focus on Base ecosystem content',
+    icon: Eye,
+    title: `${formatNum(totalImpressions)} total impressions`,
+    description: `Over ${impressionsData.length} days, you averaged ${formatNum(avgDailyImpressions)} impressions/day with a ${engagementRate}% engagement rate.`,
+    action: 'Keep creating consistent content',
     priority: 'high',
-    metric: '3x more bookmarks',
+    metric: `${engagementRate}% engagement`,
   });
-  
-  // Educational content insight
-  insights.push({
-    id: 'educational-threads',
-    type: 'insight',
-    icon: Brain,
-    title: 'Educational threads convert followers',
-    description: 'Your "explained" threads have a 12% follow rate vs 4% average. Teaching builds trust and grows audience faster.',
-    action: 'Mix in 1 educational thread/week',
-    priority: 'low',
-    metric: '12% follow rate',
-  });
-  
-  // Viral potential
-  insights.push({
-    id: 'viral-potential',
-    type: 'opportunity',
-    icon: Zap,
-    title: 'Viral post pattern detected',
-    description: 'Your contrarian takes + data combination has hit 100K+ twice. This formula has the highest viral potential.',
-    action: 'Create contrarian + data posts',
-    priority: 'high',
-    metric: '100K+ potential',
-  });
-  
-  // Follower growth
-  insights.push({
-    id: 'follower-growth',
-    type: 'insight',
-    icon: Users,
-    title: 'Follower growth accelerating',
-    description: "You're gaining 45 followers/day on average, up from 28/day last month. Thread days see 2x follower growth.",
-    action: 'Maintain consistency',
-    priority: 'low',
-    metric: '+60% growth rate',
-  });
-  
+
+  // 2. Best performing hook type (if hook data exists)
+  if (hookPerformance && hookPerformance.length > 0) {
+    const bestHook = hookPerformance.reduce((a, b) =>
+      (a.avgImpressions || 0) > (b.avgImpressions || 0) ? a : b
+    );
+
+    const avgImpressions = hookPerformance.reduce((sum, h) => sum + (h.avgImpressions || 0), 0) / hookPerformance.length;
+    const improvement = avgImpressions > 0 ? Math.round(((bestHook.avgImpressions - avgImpressions) / avgImpressions) * 100) : 0;
+
+    if (bestHook.hook && bestHook.avgImpressions > 0) {
+      insights.push({
+        id: 'hook-superpower',
+        type: 'success',
+        icon: Flame,
+        title: `${bestHook.hook} hooks work best for you`,
+        description: `Your ${bestHook.hook.toLowerCase()} content gets ${formatNum(bestHook.avgImpressions)} avg impressions${improvement > 0 ? ` (${improvement}% above your average)` : ''}. You've used this hook in ${bestHook.posts} posts.`,
+        action: `Create more ${bestHook.hook.toLowerCase()} content`,
+        priority: 'high',
+        metric: `${formatNum(bestHook.avgImpressions)} avg`,
+      });
+    }
+  }
+
+  // 3. Top performing post insight
+  if (topPosts && topPosts.length > 0) {
+    const bestPost = topPosts[0];
+    insights.push({
+      id: 'top-post',
+      type: 'success',
+      icon: Zap,
+      title: `Your top post hit ${formatNum(bestPost.impressions || 0)} impressions`,
+      description: bestPost.text
+        ? `"${bestPost.text.substring(0, 80)}${bestPost.text.length > 80 ? '...' : ''}" - This ${bestPost.hookType || 'post'} resonated with your audience.`
+        : 'Your highest performing content shows what works for your audience.',
+      action: 'Analyze and replicate this format',
+      priority: 'high',
+      metric: `${formatNum(bestPost.likes || 0)} likes`,
+    });
+  }
+
+  // 4. Engagement analysis
+  if (totalEngagement > 0) {
+    const likeRatio = ((totalLikes / totalEngagement) * 100).toFixed(0);
+    const rtRatio = ((totalRetweets / totalEngagement) * 100).toFixed(0);
+    const replyRatio = ((totalReplies / totalEngagement) * 100).toFixed(0);
+
+    let engagementInsight = '';
+    let engagementAction = '';
+
+    if (parseInt(likeRatio) > 70) {
+      engagementInsight = `Your content is well-liked (${likeRatio}% likes) but could drive more conversation.`;
+      engagementAction = 'Add questions or CTAs to boost replies';
+    } else if (parseInt(replyRatio) > 30) {
+      engagementInsight = `Great conversation starter! ${replyRatio}% of your engagement is replies.`;
+      engagementAction = 'Keep asking questions and engaging';
+    } else if (parseInt(rtRatio) > 30) {
+      engagementInsight = `Your content is highly shareable (${rtRatio}% retweets). People want to spread your ideas.`;
+      engagementAction = 'Create more share-worthy content';
+    } else {
+      engagementInsight = `Balanced engagement: ${likeRatio}% likes, ${rtRatio}% retweets, ${replyRatio}% replies.`;
+      engagementAction = 'Experiment with different content types';
+    }
+
+    insights.push({
+      id: 'engagement-breakdown',
+      type: 'insight',
+      icon: BarChart2,
+      title: 'Engagement breakdown',
+      description: engagementInsight,
+      action: engagementAction,
+      priority: 'medium',
+      metric: `${formatNum(totalEngagement)} total`,
+    });
+  }
+
+  // 5. Trend analysis (compare first half vs second half of data)
+  if (impressionsData.length >= 4) {
+    const midpoint = Math.floor(impressionsData.length / 2);
+    const firstHalf = impressionsData.slice(0, midpoint);
+    const secondHalf = impressionsData.slice(midpoint);
+
+    const firstHalfAvg = firstHalf.reduce((s, d) => s + (d.impressions || 0), 0) / firstHalf.length;
+    const secondHalfAvg = secondHalf.reduce((s, d) => s + (d.impressions || 0), 0) / secondHalf.length;
+
+    const trendPercent = firstHalfAvg > 0 ? Math.round(((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100) : 0;
+
+    if (Math.abs(trendPercent) >= 10) {
+      const trending = trendPercent > 0;
+      insights.push({
+        id: 'trend-analysis',
+        type: trending ? 'success' : 'warning',
+        icon: TrendingUp,
+        title: trending ? 'Your reach is growing!' : 'Impressions trending down',
+        description: trending
+          ? `Your recent content is getting ${trendPercent}% more impressions than earlier. Keep up the momentum!`
+          : `Your recent impressions are ${Math.abs(trendPercent)}% lower than before. Time to experiment with new content.`,
+        action: trending ? 'Maintain your posting consistency' : 'Try new content formats or topics',
+        priority: trending ? 'low' : 'high',
+        metric: `${trending ? '+' : ''}${trendPercent}% trend`,
+      });
+    }
+  }
+
+  // 6. Posting consistency
+  if (impressionsData.length > 0) {
+    const daysWithData = impressionsData.filter(d => (d.impressions || 0) > 0).length;
+    const consistencyRate = Math.round((daysWithData / impressionsData.length) * 100);
+
+    if (consistencyRate < 70) {
+      insights.push({
+        id: 'consistency',
+        type: 'warning',
+        icon: Clock,
+        title: 'Consistency opportunity',
+        description: `You had meaningful activity on ${consistencyRate}% of days. Consistent posting helps the algorithm favor your content.`,
+        action: 'Aim to post daily',
+        priority: 'medium',
+        metric: `${daysWithData}/${impressionsData.length} days`,
+      });
+    }
+  }
+
+  // 7. Monetization progress (5M impressions goal)
+  const monetizationGoal = 5000000;
+  const progressPercent = ((totalImpressions / monetizationGoal) * 100).toFixed(1);
+
+  if (totalImpressions < monetizationGoal) {
+    const remaining = monetizationGoal - totalImpressions;
+    const daysToGoal = avgDailyImpressions > 0 ? Math.ceil(remaining / avgDailyImpressions) : 999;
+
+    insights.push({
+      id: 'monetization-progress',
+      type: 'opportunity',
+      icon: Target,
+      title: `${progressPercent}% to monetization`,
+      description: `You need ${formatNum(remaining)} more impressions for X monetization. At your current rate, that's ~${daysToGoal} days.`,
+      action: 'Increase posting frequency',
+      priority: 'high',
+      metric: `${formatNum(remaining)} to go`,
+    });
+  } else {
+    insights.push({
+      id: 'monetization-achieved',
+      type: 'success',
+      icon: Target,
+      title: '🎉 Monetization threshold reached!',
+      description: `You've hit ${formatNum(totalImpressions)} impressions, surpassing the 5M threshold. You may be eligible for X monetization.`,
+      action: 'Check your X monetization settings',
+      priority: 'high',
+      metric: 'Goal achieved!',
+    });
+  }
+
   return insights;
 };
 

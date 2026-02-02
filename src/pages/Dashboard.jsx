@@ -10,11 +10,13 @@ import {
 } from '../components';
 import { formatNumber } from '../utils/helpers';
 
-export const Dashboard = ({ 
-  analytics, 
-  summaryMetrics, 
-  topPosts, 
-  onPostClick 
+export const Dashboard = ({
+  analytics,
+  summaryMetrics,
+  topPosts,
+  onPostClick,
+  monetizationGoal = 5000000,
+  monetizationDeadline = null
 }) => {
   if (!analytics || !summaryMetrics) {
     return (
@@ -26,11 +28,11 @@ export const Dashboard = ({
 
   return (
     <div className="space-y-6">
-      {/* Monetization Tracker */}
+      {/* Monetization Tracker - uses real impressions from CSV/API */}
       <MonetizationTracker
-        current={3780000}
-        goal={5000000}
-        deadline="2026-02-28"
+        current={summaryMetrics.totalImpressions}
+        goal={monetizationGoal}
+        deadline={monetizationDeadline}
       />
 
       {/* Key Metrics */}
