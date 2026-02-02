@@ -19,6 +19,7 @@ export const CSV_TYPES = {
 
 /**
  * Parse CSV text into array of objects
+ * Handles X Analytics format where first row may be a title row
  */
 export function parseCSV(csvText) {
   const lines = csvText.trim().split('\n');
@@ -26,11 +27,33 @@ export function parseCSV(csvText) {
     throw new Error('CSV file is empty or invalid');
   }
 
-  const headers = parseCSVLine(lines[0]);
+  // Find the header row - X Analytics sometimes has a title row first
+  // The header row is the one with multiple non-empty columns that look like column names
+  let headerRowIndex = 0;
+  let headers = parseCSVLine(lines[0]);
+
+  // Check if first row is a title row (has mostly empty columns except first)
+  const nonEmptyInFirstRow = headers.filter(h => h.trim() !== '').length;
+  const totalColumns = headers.length;
+
+  // If first row has only 1-2 non-empty values but many columns, it's likely a title
+  // Or if the first cell contains words like "overview", "analytics", etc.
+  const firstCellLower = headers[0].toLowerCase();
+  const isTitleRow = (nonEmptyInFirstRow <= 2 && totalColumns > 3) ||
+    firstCellLower.includes('overview') ||
+    firstCellLower.includes('analytics') ||
+    firstCellLower.includes('summary');
+
+  if (isTitleRow && lines.length > 2) {
+    console.log('Detected title row, using second row as headers');
+    headerRowIndex = 1;
+    headers = parseCSVLine(lines[1]);
+  }
+
   console.log('CSV Headers found:', headers);
 
   const data = [];
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerRowIndex + 1; i < lines.length; i++) {
     const values = parseCSVLine(lines[i]);
     if (values.length > 0 && values.some(v => v.trim() !== '')) {
       const row = {};
@@ -78,18 +101,44 @@ export function detectCSVType(csvData) {
   const keys = Object.keys(csvData[0]);
   console.log('Detecting CSV type from keys:', keys);
 
-  // Video Analytics: has "views", "watch_time_ms", "completion_rate"
-  if (keys.some(k => k.includes('watch_time') || k.includes('completion_rate') || k.includes('average_watch_time'))) {
+  // Normalize keys for easier matching
+  const normalizedKeys = keys.map(k => k.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, ''));
+  console.log('Normalized keys:', normalizedKeys);
+
+  // Video Analytics: has "views", "watch_time", "completion_rate", "video"
+  // X Analytics video exports have: Date, Views, Watch Time (ms), Completion Rate, Average Watch Time (ms)
+  if (normalizedKeys.some(k =>
+    k.includes('watch_time') ||
+    k.includes('completion_rate') ||
+    k.includes('average_watch_time') ||
+    k.includes('video_views') ||
+    (k === 'views' && normalizedKeys.some(nk => nk.includes('watch')))
+  )) {
     return CSV_TYPES.VIDEO_ANALYTICS;
   }
 
-  // Content Analytics: has "post_id" or "post_text" or "post_link"
-  if (keys.some(k => k.includes('post_id') || k.includes('post_text') || k.includes('post_link'))) {
+  // Content Analytics: has "post_id" or "post_text" or "post_link" or "tweet"
+  if (normalizedKeys.some(k =>
+    k.includes('post_id') ||
+    k.includes('post_text') ||
+    k.includes('post_link') ||
+    k.includes('tweet')
+  )) {
     return CSV_TYPES.CONTENT_ANALYTICS;
   }
 
-  // Account Overview: has "date" with metrics but no post_id/post_text
-  if (keys.some(k => k === 'date') && keys.some(k => k === 'impressions' || k === 'likes')) {
+  // Account Overview: has "date" with engagement metrics but no post_id/post_text
+  // X Analytics account exports have: Date, Impressions, Likes, Engagements, New follows, etc.
+  const hasDate = normalizedKeys.some(k => k === 'date');
+  const hasEngagementMetrics = normalizedKeys.some(k =>
+    k === 'impressions' ||
+    k === 'likes' ||
+    k === 'engagements' ||
+    k === 'new_follows' ||
+    k === 'profile_visits'
+  );
+
+  if (hasDate && hasEngagementMetrics) {
     return CSV_TYPES.ACCOUNT_OVERVIEW;
   }
 
