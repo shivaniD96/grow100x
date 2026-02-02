@@ -13,6 +13,13 @@ import {
   transformToTopPosts,
   calculateHookPerformance
 } from '../services/xApi';
+import {
+  parseCSV,
+  transformCSVToAnalytics,
+  transformCSVToTopPosts,
+  calculateCSVHookPerformance,
+  recalculateFromTweets
+} from '../utils/csvParser';
 
 export const useAnalytics = () => {
   const [isConnected, setIsConnected] = useState(() => storage.get('x_connected', false));
@@ -25,6 +32,8 @@ export const useAnalytics = () => {
   const [accountStats, setAccountStats] = useState(null);
   const [timeRange, setTimeRange] = useState('30d');
   const [isDemoMode, setIsDemoMode] = useState(() => storage.get('x_demo_mode', false));
+  const [isCSVMode, setIsCSVMode] = useState(() => storage.get('x_csv_mode', false));
+  const [csvRawTweets, setCsvRawTweets] = useState(() => storage.get('x_csv_tweets', []));
 
   // Handle OAuth callback on mount
   useEffect(() => {
@@ -35,8 +44,10 @@ export const useAnalytics = () => {
           // OAuth successful
           storage.set('x_connected', true);
           storage.set('x_demo_mode', false);
+          storage.set('x_csv_mode', false);
           setIsConnected(true);
           setIsDemoMode(false);
+          setIsCSVMode(false);
         }
       } catch (err) {
         console.error('OAuth callback error:', err);
@@ -46,6 +57,79 @@ export const useAnalytics = () => {
 
     checkOAuthCallback();
   }, []);
+
+  // Load CSV data on mount if in CSV mode
+  useEffect(() => {
+    if (isCSVMode && csvRawTweets.length > 0 && !analytics) {
+      loadCSVData(csvRawTweets);
+    }
+  }, [isCSVMode]);
+
+  // Load CSV data helper
+  const loadCSVData = useCallback((rawTweets) => {
+    const analyticsData = recalculateFromTweets(rawTweets);
+    const topPostsData = transformCSVToTopPosts(rawTweets, 5);
+    const hookPerfData = calculateCSVHookPerformance(rawTweets);
+
+    setAnalytics(analyticsData);
+    setTopPosts(topPostsData);
+    setHookPerformance(hookPerfData);
+    setAccountStats({
+      username: 'CSV Import',
+      displayName: 'Your Data',
+      followers: 0,
+      following: 0,
+      profileImage: null
+    });
+    setInsights(generateInsights(analyticsData, topPostsData, hookPerfData));
+  }, []);
+
+  // Import CSV files
+  const importCSV = useCallback(async (files) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let allTweets = [...csvRawTweets];
+      const existingIds = new Set(allTweets.map(t => t.id));
+
+      for (const file of files) {
+        const csvData = parseCSV(file.content);
+        const { rawTweets } = transformCSVToAnalytics(csvData);
+
+        // Merge, avoiding duplicates
+        for (const tweet of rawTweets) {
+          if (!existingIds.has(tweet.id)) {
+            allTweets.push(tweet);
+            existingIds.add(tweet.id);
+          }
+        }
+      }
+
+      // Sort by date
+      allTweets.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+      // Store in localStorage
+      storage.set('x_csv_tweets', allTweets);
+      storage.set('x_csv_mode', true);
+      storage.set('x_connected', true);
+      storage.set('x_demo_mode', false);
+
+      setCsvRawTweets(allTweets);
+      setIsCSVMode(true);
+      setIsDemoMode(false);
+      setIsConnected(true);
+
+      // Load the data
+      loadCSVData(allTweets);
+
+    } catch (err) {
+      console.error('CSV import error:', err);
+      setError(err.message || 'Failed to import CSV files');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [csvRawTweets, loadCSVData]);
 
   // Connect to X (real OAuth or demo mode)
   const connect = useCallback(async (useDemo = false) => {
@@ -58,7 +142,9 @@ export const useAnalytics = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
         storage.set('x_connected', true);
         storage.set('x_demo_mode', true);
+        storage.set('x_csv_mode', false);
         setIsDemoMode(true);
+        setIsCSVMode(false);
         setIsConnected(true);
       } else {
         // Real OAuth flow - redirects to X
@@ -78,9 +164,13 @@ export const useAnalytics = () => {
     clearTokens();
     storage.remove('x_connected');
     storage.remove('x_demo_mode');
+    storage.remove('x_csv_mode');
+    storage.remove('x_csv_tweets');
     storage.remove('x_user_id');
     setIsConnected(false);
     setIsDemoMode(false);
+    setIsCSVMode(false);
+    setCsvRawTweets([]);
     setAnalytics(null);
     setInsights([]);
     setTopPosts([]);
@@ -92,6 +182,12 @@ export const useAnalytics = () => {
   // Fetch analytics data (real or mock)
   const fetchAnalytics = useCallback(async () => {
     if (!isConnected) return;
+
+    // If CSV mode, reload from stored tweets
+    if (isCSVMode && csvRawTweets.length > 0) {
+      loadCSVData(csvRawTweets);
+      return;
+    }
 
     setIsLoading(true);
     setError(null);
@@ -143,7 +239,7 @@ export const useAnalytics = () => {
       setError(err.message);
 
       // Fall back to demo mode on error
-      if (!isDemoMode) {
+      if (!isDemoMode && !isCSVMode) {
         console.log('Falling back to demo mode');
         const data = generateMockAnalytics(days);
         setAnalytics(data);
@@ -155,7 +251,7 @@ export const useAnalytics = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, timeRange, isDemoMode]);
+  }, [isConnected, timeRange, isDemoMode, isCSVMode, csvRawTweets, loadCSVData]);
 
   // Refresh insights
   const refreshInsights = useCallback(() => {
@@ -166,10 +262,10 @@ export const useAnalytics = () => {
 
   // Load data when connected
   useEffect(() => {
-    if (isConnected) {
+    if (isConnected && !isCSVMode) {
       fetchAnalytics();
     }
-  }, [isConnected, fetchAnalytics]);
+  }, [isConnected, fetchAnalytics, isCSVMode]);
 
   // Calculate summary metrics
   const summaryMetrics = analytics ? {
@@ -193,9 +289,12 @@ export const useAnalytics = () => {
     summaryMetrics,
     timeRange,
     isDemoMode,
+    isCSVMode,
+    csvTweetCount: csvRawTweets.length,
     setTimeRange,
     connect,
     disconnect,
+    importCSV,
     refreshInsights,
     fetchAnalytics,
   };

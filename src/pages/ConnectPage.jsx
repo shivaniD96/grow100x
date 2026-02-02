@@ -1,7 +1,43 @@
-import React from 'react';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Sparkles, CheckCircle2, Upload, ArrowLeft } from 'lucide-react';
+import { CSVUpload } from '../components';
 
-export const ConnectPage = ({ onConnect, isConnecting, error }) => {
+export const ConnectPage = ({ onConnect, onCSVUpload, isConnecting, error }) => {
+  const [showCSVUpload, setShowCSVUpload] = useState(false);
+
+  if (showCSVUpload) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center p-6">
+        <div className="max-w-lg w-full">
+          <button
+            onClick={() => setShowCSVUpload(false)}
+            className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Upload className="w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Import X Analytics</h2>
+            <p className="text-gray-400">
+              Upload your exported CSV files from X Analytics
+            </p>
+          </div>
+
+          <CSVUpload
+            onUpload={(files) => {
+              onCSVUpload(files);
+            }}
+            onCancel={() => setShowCSVUpload(false)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center p-6">
       <div className="max-w-md w-full">
@@ -11,7 +47,7 @@ export const ConnectPage = ({ onConnect, isConnecting, error }) => {
           </div>
           <h1 className="text-3xl font-bold mb-2">Growth Skills Lab</h1>
           <p className="text-gray-400">
-            Connect your X account to unlock analytics-powered insights
+            Import your X analytics to unlock powerful insights
           </p>
         </div>
 
@@ -42,33 +78,57 @@ export const ConnectPage = ({ onConnect, isConnecting, error }) => {
           </div>
         )}
 
+        {/* CSV Upload Button - Primary Action */}
+        <button
+          onClick={() => setShowCSVUpload(true)}
+          disabled={isConnecting}
+          className="w-full py-4 px-6 bg-violet-600 hover:bg-violet-500 rounded-xl font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50"
+        >
+          <Upload className="w-5 h-5" />
+          Import CSV from X Analytics
+        </button>
+
+        <p className="text-center text-xs text-gray-500 mt-4">
+          Export your data from analytics.x.com and upload it here
+        </p>
+
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-700"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-4 bg-gray-900 text-gray-500">or</span>
+          </div>
+        </div>
+
+        {/* X API Connect Button - Secondary */}
         <button
           onClick={() => onConnect(false)}
           disabled={isConnecting}
-          className="w-full py-4 px-6 bg-black hover:bg-gray-900 border border-gray-700 rounded-xl font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50"
+          className="w-full py-3 px-6 bg-black hover:bg-gray-900 border border-gray-700 rounded-xl font-medium flex items-center justify-center gap-3 transition-all disabled:opacity-50 text-sm"
         >
           {isConnecting ? (
             <>
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               Connecting...
             </>
           ) : (
             <>
-              <XIcon className="w-5 h-5" />
-              Connect X Account
+              <XIcon className="w-4 h-4" />
+              Connect X Account (API)
             </>
           )}
         </button>
 
-        <p className="text-center text-xs text-gray-500 mt-4">
-          We only read your public analytics. We never post on your behalf.
+        <p className="text-center text-xs text-gray-500 mt-2">
+          Requires X API subscription ($100/month)
         </p>
 
         {/* Demo Mode Button */}
         <button
           onClick={() => onConnect(true)}
           disabled={isConnecting}
-          className="w-full mt-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+          className="w-full mt-6 py-2 text-sm text-gray-400 hover:text-white transition-colors"
         >
           Or try with demo data →
         </button>

@@ -33,15 +33,18 @@ export default function App() {
     summaryMetrics,
     timeRange,
     isDemoMode,
+    isCSVMode,
+    csvTweetCount,
     setTimeRange,
     connect,
     disconnect,
+    importCSV,
     refreshInsights,
   } = useAnalytics();
 
   // Show connect page if not connected
   if (!isConnected) {
-    return <ConnectPage onConnect={connect} isConnecting={isLoading} error={error} />;
+    return <ConnectPage onConnect={connect} onCSVUpload={importCSV} isConnecting={isLoading} error={error} />;
   }
 
   return (
@@ -62,12 +65,12 @@ export default function App() {
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 rounded-lg">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${isDemoMode ? 'bg-yellow-400' : 'bg-green-400'}`} />
+                <div className={`w-2 h-2 rounded-full animate-pulse ${isDemoMode ? 'bg-yellow-400' : isCSVMode ? 'bg-blue-400' : 'bg-green-400'}`} />
                 <span className="text-sm text-gray-300">
-                  {isDemoMode ? 'Demo Mode' : `@${accountStats?.username || 'connected'}`}
+                  {isDemoMode ? 'Demo Mode' : isCSVMode ? `CSV (${csvTweetCount} tweets)` : `@${accountStats?.username || 'connected'}`}
                 </span>
               </div>
-              {!isDemoMode && (
+              {(isDemoMode || isCSVMode) && (
                 <button
                   onClick={disconnect}
                   className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
