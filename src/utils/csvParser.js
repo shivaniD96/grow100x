@@ -645,21 +645,34 @@ export function mergeAnalyticsData(dataArray) {
     }
   };
 
+  // First pass: identify what data types we have
+  let hasAccountOverview = false;
+  dataArray.forEach(data => {
+    if (data.type === CSV_TYPES.ACCOUNT_OVERVIEW) {
+      hasAccountOverview = true;
+    }
+  });
+
+  console.log('Has Account Overview:', hasAccountOverview);
+
+  // Second pass: merge data
   dataArray.forEach(data => {
     console.log('Processing CSV type:', data.type, 'with summary:', data.summary);
 
     switch (data.type) {
       case CSV_TYPES.ACCOUNT_OVERVIEW:
         merged.accountOverview = data;
-        // Use account overview for main charts if available
+        // Account Overview is the SOURCE OF TRUTH for impressions/engagement
+        // Use it for main charts
         if (data.impressionsData.length > 0) {
           merged.impressionsData = data.impressionsData;
           merged.engagementData = data.engagementData;
         }
-        merged.summary.totalImpressions += data.summary.totalImpressions || 0;
-        merged.summary.totalLikes += data.summary.totalLikes || 0;
-        merged.summary.totalEngagements += data.summary.totalEngagements || 0;
-        console.log('After Account Overview merge, total impressions:', merged.summary.totalImpressions);
+        // ONLY Account Overview contributes to totals
+        merged.summary.totalImpressions = data.summary.totalImpressions || 0;
+        merged.summary.totalLikes = data.summary.totalLikes || 0;
+        merged.summary.totalEngagements = data.summary.totalEngagements || 0;
+        console.log('Account Overview sets total impressions:', merged.summary.totalImpressions);
         break;
 
       case CSV_TYPES.CONTENT_ANALYTICS:
@@ -667,17 +680,19 @@ export function mergeAnalyticsData(dataArray) {
         merged.topPosts = data.topPosts;
         merged.hookPerformance = data.hookPerformance;
         merged.summary.totalPosts = data.summary.totalPosts || 0;
-        // Use content data for charts if no account overview
-        if (merged.impressionsData.length === 0) {
-          merged.impressionsData = data.impressionsData;
-          merged.engagementData = data.engagementData;
+
+        // ONLY use Content Analytics for charts/totals if NO Account Overview
+        if (!hasAccountOverview) {
+          if (merged.impressionsData.length === 0) {
+            merged.impressionsData = data.impressionsData;
+            merged.engagementData = data.engagementData;
+          }
+          merged.summary.totalImpressions = data.summary.totalImpressions || 0;
+          merged.summary.totalLikes = data.summary.totalLikes || 0;
+          console.log('Content Analytics sets total impressions (no account overview):', merged.summary.totalImpressions);
+        } else {
+          console.log('Content Analytics: skipping impressions (Account Overview is source of truth)');
         }
-        // Add to totals if not already counted from account overview
-        if (!merged.accountOverview) {
-          merged.summary.totalImpressions += data.summary.totalImpressions || 0;
-          merged.summary.totalLikes += data.summary.totalLikes || 0;
-        }
-        console.log('After Content Analytics merge, total impressions:', merged.summary.totalImpressions);
         break;
 
       case CSV_TYPES.VIDEO_ANALYTICS:
