@@ -45,32 +45,40 @@ export const Dashboard = ({
           iconColor="text-blue-400"
           label={`Impressions (${timeLabel})`}
           value={formatNumber(summaryMetrics.totalImpressions)}
-          trend="23%"
-          trendDirection="up"
+          trend={summaryMetrics.trends?.impressionsTrend
+            ? `${summaryMetrics.trends.impressionsTrend.value > 0 ? '+' : ''}${summaryMetrics.trends.impressionsTrend.value}%`
+            : null}
+          trendDirection={summaryMetrics.trends?.impressionsTrend?.direction || 'up'}
         />
         <MetricCard
           icon={Heart}
           iconColor="text-red-400"
           label={`Likes (${timeLabel})`}
           value={formatNumber(summaryMetrics.totalLikes)}
-          trend="18%"
-          trendDirection="up"
+          trend={summaryMetrics.trends?.likesTrend
+            ? `${summaryMetrics.trends.likesTrend.value > 0 ? '+' : ''}${summaryMetrics.trends.likesTrend.value}%`
+            : null}
+          trendDirection={summaryMetrics.trends?.likesTrend?.direction || 'up'}
         />
         <MetricCard
           icon={Users}
           iconColor="text-violet-400"
           label="Followers"
           value={formatNumber(summaryMetrics.currentFollowers)}
-          trend="+312"
-          trendDirection="up"
+          trend={summaryMetrics.trends?.followersTrend
+            ? `${summaryMetrics.trends.followersTrend.value >= 0 ? '+' : ''}${summaryMetrics.trends.followersTrend.value}`
+            : null}
+          trendDirection={summaryMetrics.trends?.followersTrend?.direction || 'up'}
         />
         <MetricCard
           icon={TrendingUp}
           iconColor="text-green-400"
           label="Engagement Rate"
           value={`${summaryMetrics.avgEngagementRate}%`}
-          trend="0.8%"
-          trendDirection="up"
+          trend={summaryMetrics.trends?.engagementTrend
+            ? `${summaryMetrics.trends.engagementTrend.value >= 0 ? '+' : ''}${summaryMetrics.trends.engagementTrend.value}%`
+            : null}
+          trendDirection={summaryMetrics.trends?.engagementTrend?.direction || 'up'}
         />
       </div>
 

@@ -386,6 +386,9 @@ export const useAnalytics = () => {
   console.log('Calculated impressions from analytics:', calculatedImpressions);
   console.log('Raw impressions from csvData.summary:', rawImpressions);
 
+  // Calculate real trends from data
+  const trends = analytics ? calculateTrends(analytics, csvData, timeRange) : null;
+
   const summaryMetrics = analytics ? {
     totalImpressions: useRawTotals ? rawImpressions : calculatedImpressions,
     totalLikes: useRawTotals
@@ -400,6 +403,8 @@ export const useAnalytics = () => {
     totalWatchTime: csvData?.videoAnalytics?.summary?.totalWatchTimeMinutes || 0,
     // Include raw totals for debugging
     rawTotalImpressions: rawImpressions,
+    // Real calculated trends
+    trends: trends,
   } : null;
 
   // Get counts for display
@@ -447,4 +452,147 @@ function calculateAvgEngagementRate(analytics) {
 
   if (totalImpressions === 0) return 0;
   return parseFloat(((totalEngagement / totalImpressions) * 100).toFixed(1));
+}
+
+// Helper to calculate percentage change between two values
+function calculatePercentChange(current, previous) {
+  if (previous === 0) {
+    return current > 0 ? 100 : 0;
+  }
+  return parseFloat((((current - previous) / previous) * 100).toFixed(1));
+}
+
+// Helper to split data into current and previous periods for trend calculation
+function splitDataIntoPeriods(dataArray, days, mostRecentDate) {
+  if (!dataArray || dataArray.length === 0) {
+    return { current: [], previous: [] };
+  }
+
+  // If "all time", we can't calculate trends - need a specific period
+  if (days === Infinity) {
+    // For all time, split data in half
+    const midpoint = Math.floor(dataArray.length / 2);
+    return {
+      current: dataArray.slice(midpoint),
+      previous: dataArray.slice(0, midpoint)
+    };
+  }
+
+  const cutoffDate = new Date(mostRecentDate.getTime() - days * 24 * 60 * 60 * 1000);
+  const previousCutoffDate = new Date(cutoffDate.getTime() - days * 24 * 60 * 60 * 1000);
+
+  const current = [];
+  const previous = [];
+
+  dataArray.forEach(item => {
+    const dateStr = item.fullDate || item.date;
+    if (!dateStr) return;
+
+    const itemDate = new Date(dateStr);
+    if (isNaN(itemDate.getTime())) return;
+
+    if (itemDate >= cutoffDate) {
+      current.push(item);
+    } else if (itemDate >= previousCutoffDate && itemDate < cutoffDate) {
+      previous.push(item);
+    }
+  });
+
+  return { current, previous };
+}
+
+// Calculate trends by comparing current period to previous period
+function calculateTrends(analytics, csvData, timeRange) {
+  if (!analytics?.impressionsData || !analytics?.engagementData) {
+    return {
+      impressionsTrend: null,
+      likesTrend: null,
+      followersTrend: null,
+      engagementTrend: null
+    };
+  }
+
+  // Get days for the time range
+  const days = timeRange === 'all' ? Infinity : timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+
+  // Find most recent date
+  const allData = [...(csvData?.impressionsData || analytics.impressionsData || [])];
+  let mostRecentDate = new Date();
+  for (const item of allData) {
+    const dateStr = item.fullDate || item.date;
+    if (!dateStr) continue;
+    const itemDate = new Date(dateStr);
+    if (!isNaN(itemDate.getTime()) && itemDate > mostRecentDate) {
+      mostRecentDate = itemDate;
+    }
+  }
+
+  // Split impressions data into periods
+  const impressionsPeriods = splitDataIntoPeriods(
+    csvData?.impressionsData || analytics.impressionsData,
+    days,
+    mostRecentDate
+  );
+
+  // Split engagement data into periods
+  const engagementPeriods = splitDataIntoPeriods(
+    csvData?.engagementData || analytics.engagementData,
+    days,
+    mostRecentDate
+  );
+
+  // Calculate current and previous metrics
+  const currentImpressions = impressionsPeriods.current.reduce((sum, d) => sum + (d.impressions || 0), 0);
+  const previousImpressions = impressionsPeriods.previous.reduce((sum, d) => sum + (d.impressions || 0), 0);
+
+  const currentLikes = engagementPeriods.current.reduce((sum, d) => sum + (d.likes || 0), 0);
+  const previousLikes = engagementPeriods.previous.reduce((sum, d) => sum + (d.likes || 0), 0);
+
+  // Calculate follower change (net followers gained in current vs previous period)
+  const currentFollowerData = impressionsPeriods.current;
+  const previousFollowerData = impressionsPeriods.previous;
+
+  // Get follower change by looking at first and last values in each period
+  const currentFollowerChange = currentFollowerData.length > 1
+    ? (currentFollowerData[currentFollowerData.length - 1]?.followers || 0) - (currentFollowerData[0]?.followers || 0)
+    : 0;
+  const previousFollowerChange = previousFollowerData.length > 1
+    ? (previousFollowerData[previousFollowerData.length - 1]?.followers || 0) - (previousFollowerData[0]?.followers || 0)
+    : 0;
+
+  // Calculate engagement rates for current and previous
+  const currentEngagement = engagementPeriods.current.reduce((sum, d) =>
+    sum + (d.likes || 0) + (d.retweets || 0) + (d.replies || 0), 0
+  );
+  const previousEngagement = engagementPeriods.previous.reduce((sum, d) =>
+    sum + (d.likes || 0) + (d.retweets || 0) + (d.replies || 0), 0
+  );
+
+  const currentEngagementRate = currentImpressions > 0
+    ? (currentEngagement / currentImpressions) * 100
+    : 0;
+  const previousEngagementRate = previousImpressions > 0
+    ? (previousEngagement / previousImpressions) * 100
+    : 0;
+
+  return {
+    impressionsTrend: {
+      value: calculatePercentChange(currentImpressions, previousImpressions),
+      direction: currentImpressions >= previousImpressions ? 'up' : 'down'
+    },
+    likesTrend: {
+      value: calculatePercentChange(currentLikes, previousLikes),
+      direction: currentLikes >= previousLikes ? 'up' : 'down'
+    },
+    followersTrend: {
+      value: currentFollowerChange,
+      direction: currentFollowerChange >= previousFollowerChange ? 'up' : 'down',
+      isAbsolute: true // This is an absolute number, not a percentage
+    },
+    engagementTrend: {
+      value: parseFloat((currentEngagementRate - previousEngagementRate).toFixed(1)),
+      direction: currentEngagementRate >= previousEngagementRate ? 'up' : 'down',
+      isAbsolute: true // This is a percentage point change
+    }
+  };
 }
