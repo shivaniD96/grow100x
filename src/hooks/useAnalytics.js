@@ -62,22 +62,74 @@ export const useAnalytics = () => {
   // Load CSV data on mount if in CSV mode
   useEffect(() => {
     if (isCSVMode && csvData && !analytics) {
-      loadCSVData(csvData);
+      loadCSVData(csvData, timeRange);
     }
   }, [isCSVMode, csvData]);
 
-  // Load CSV data helper
-  const loadCSVData = useCallback((data) => {
+  // Re-filter data when timeRange changes in CSV mode
+  useEffect(() => {
+    if (isCSVMode && csvData) {
+      loadCSVData(csvData, timeRange);
+    }
+  }, [timeRange, isCSVMode]);
+
+  // Filter data by time range
+  const filterByTimeRange = useCallback((dataArray, days) => {
+    if (!dataArray || dataArray.length === 0) return dataArray;
+
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    return dataArray.filter(item => {
+      // Try to parse the date from fullDate or date field
+      const dateStr = item.fullDate || item.date;
+      if (!dateStr) return true; // Keep items without dates
+
+      const itemDate = new Date(dateStr);
+      if (isNaN(itemDate.getTime())) return true; // Keep items with invalid dates
+
+      return itemDate >= cutoffDate;
+    });
+  }, []);
+
+  // Load CSV data helper with time range filtering
+  const loadCSVData = useCallback((data, range = '30d') => {
     if (!data) return;
 
-    // Create analytics object from merged data
+    const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+
+    // Filter data by time range
+    const filteredImpressions = filterByTimeRange(data.impressionsData || [], days);
+    const filteredEngagement = filterByTimeRange(data.engagementData || [], days);
+
+    // Create analytics object from filtered data
     const analyticsData = {
-      impressionsData: data.impressionsData || [],
-      engagementData: data.engagementData || []
+      impressionsData: filteredImpressions,
+      engagementData: filteredEngagement
     };
 
+    // Filter top posts by date range too
+    const filteredTopPosts = (data.topPosts || []).filter(post => {
+      if (!post.date) return true;
+      // Parse relative dates like "2 days ago", "Yesterday", etc.
+      const dateMatch = post.date.match(/(\d+)\s*days?\s*ago/i);
+      if (dateMatch) {
+        const daysAgo = parseInt(dateMatch[1]);
+        return daysAgo <= days;
+      }
+      if (post.date.toLowerCase() === 'yesterday') return days >= 1;
+      if (post.date.toLowerCase() === 'today') return true;
+      // For absolute dates, try parsing
+      const postDate = new Date(post.date);
+      if (!isNaN(postDate.getTime())) {
+        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        return postDate >= cutoff;
+      }
+      return true;
+    });
+
     setAnalytics(analyticsData);
-    setTopPosts(data.topPosts || []);
+    setTopPosts(filteredTopPosts);
     setHookPerformance(data.hookPerformance || []);
 
     // Create account stats from summary
@@ -93,11 +145,11 @@ export const useAnalytics = () => {
       hasVideoAnalytics: !!data.videoAnalytics,
     });
 
-    // Generate insights if we have data
-    if (analyticsData.impressionsData.length > 0) {
-      setInsights(generateInsights(analyticsData, data.topPosts || [], data.hookPerformance || []));
+    // Generate insights from filtered data
+    if (analyticsData.impressionsData.length > 0 || analyticsData.engagementData.length > 0) {
+      setInsights(generateInsights(analyticsData, filteredTopPosts, data.hookPerformance || []));
     }
-  }, []);
+  }, [filterByTimeRange]);
 
   // Import CSV files
   const importCSV = useCallback(async (files) => {
@@ -139,8 +191,8 @@ export const useAnalytics = () => {
       setIsDemoMode(false);
       setIsConnected(true);
 
-      // Load the data
-      loadCSVData(mergedData);
+      // Load the data with current time range
+      loadCSVData(mergedData, timeRange);
 
     } catch (err) {
       console.error('CSV import error:', err);
@@ -148,7 +200,7 @@ export const useAnalytics = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [uploadedTypes, loadCSVData]);
+  }, [uploadedTypes, loadCSVData, timeRange]);
 
   // Connect to X (real OAuth or demo mode)
   const connect = useCallback(async (useDemo = false) => {
