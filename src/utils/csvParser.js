@@ -201,6 +201,13 @@ export function transformAccountOverview(csvData) {
     };
   }).filter(row => row.date);
 
+  // Debug: Log first few rows to check date format
+  console.log('First 3 daily data rows:', dailyData.slice(0, 3));
+
+  // Calculate raw total before any date parsing
+  const rawTotalImpressions = dailyData.reduce((sum, d) => sum + d.impressions, 0);
+  console.log('Raw total impressions from dailyData:', rawTotalImpressions);
+
   // Sort by date
   dailyData.sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -210,10 +217,30 @@ export function transformAccountOverview(csvData) {
   const followerData = [];
 
   let cumulativeFollowers = 0;
+  let skippedDates = 0;
 
   dailyData.forEach(day => {
     const parsedDate = parseDate(day.date);
-    if (!parsedDate) return;
+    if (!parsedDate) {
+      skippedDates++;
+      // Still add the data even if date parsing fails, use a fallback
+      // This ensures we don't lose impressions data
+      impressionsData.push({
+        date: day.date || 'Unknown',
+        fullDate: new Date().toISOString(),
+        impressions: day.impressions,
+        followers: cumulativeFollowers
+      });
+      engagementData.push({
+        date: day.date || 'Unknown',
+        fullDate: new Date().toISOString(),
+        likes: day.likes,
+        retweets: day.reposts + day.shares,
+        replies: day.replies,
+        bookmarks: day.bookmarks
+      });
+      return;
+    }
 
     const dateStr = format(parsedDate, 'MMM d');
     const fullDate = parsedDate.toISOString();
@@ -245,6 +272,12 @@ export function transformAccountOverview(csvData) {
     });
   });
 
+  console.log('Skipped dates due to parsing:', skippedDates, 'of', dailyData.length);
+  console.log('Final impressionsData length:', impressionsData.length);
+
+  const totalImpressions = dailyData.reduce((sum, d) => sum + d.impressions, 0);
+  console.log('Total impressions in summary:', totalImpressions);
+
   return {
     type: CSV_TYPES.ACCOUNT_OVERVIEW,
     impressionsData,
@@ -252,7 +285,7 @@ export function transformAccountOverview(csvData) {
     followerData,
     dailyData,
     summary: {
-      totalImpressions: dailyData.reduce((sum, d) => sum + d.impressions, 0),
+      totalImpressions,
       totalLikes: dailyData.reduce((sum, d) => sum + d.likes, 0),
       totalEngagements: dailyData.reduce((sum, d) => sum + d.engagements, 0),
       totalNewFollows: dailyData.reduce((sum, d) => sum + d.newFollows, 0),
