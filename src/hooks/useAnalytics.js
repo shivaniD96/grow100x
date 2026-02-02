@@ -515,17 +515,31 @@ function calculateTrends(analytics, csvData, timeRange) {
   // Get days for the time range
   const days = timeRange === 'all' ? Infinity : timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
 
-  // Find most recent date
+  // Find most recent date in the data (not today)
   const allData = [...(csvData?.impressionsData || analytics.impressionsData || [])];
-  let mostRecentDate = new Date();
+  let mostRecentDate = null;
   for (const item of allData) {
     const dateStr = item.fullDate || item.date;
     if (!dateStr) continue;
     const itemDate = new Date(dateStr);
-    if (!isNaN(itemDate.getTime()) && itemDate > mostRecentDate) {
-      mostRecentDate = itemDate;
+    if (!isNaN(itemDate.getTime())) {
+      if (!mostRecentDate || itemDate > mostRecentDate) {
+        mostRecentDate = itemDate;
+      }
     }
   }
+
+  // If no valid date found, can't calculate trends
+  if (!mostRecentDate) {
+    return {
+      impressionsTrend: null,
+      likesTrend: null,
+      followersTrend: null,
+      engagementTrend: null
+    };
+  }
+
+  console.log('Trend calculation - Most recent date:', mostRecentDate, 'Days:', days);
 
   // Split impressions data into periods
   const impressionsPeriods = splitDataIntoPeriods(
@@ -574,6 +588,19 @@ function calculateTrends(analytics, csvData, timeRange) {
   const previousEngagementRate = previousImpressions > 0
     ? (previousEngagement / previousImpressions) * 100
     : 0;
+
+  console.log('Trend calculation results:', {
+    currentImpressions,
+    previousImpressions,
+    currentLikes,
+    previousLikes,
+    currentFollowerChange,
+    previousFollowerChange,
+    currentEngagementRate: currentEngagementRate.toFixed(2),
+    previousEngagementRate: previousEngagementRate.toFixed(2),
+    currentPeriodDays: impressionsPeriods.current.length,
+    previousPeriodDays: impressionsPeriods.previous.length
+  });
 
   return {
     impressionsTrend: {
