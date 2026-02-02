@@ -73,12 +73,30 @@ export const useAnalytics = () => {
     }
   }, [timeRange, isCSVMode]);
 
-  // Filter data by time range
-  const filterByTimeRange = useCallback((dataArray, days) => {
+  // Find the most recent date in a data array
+  const findMostRecentDate = useCallback((dataArray) => {
+    if (!dataArray || dataArray.length === 0) return new Date();
+
+    let mostRecent = null;
+    for (const item of dataArray) {
+      const dateStr = item.fullDate || item.date;
+      if (!dateStr) continue;
+
+      const itemDate = new Date(dateStr);
+      if (!isNaN(itemDate.getTime())) {
+        if (!mostRecent || itemDate > mostRecent) {
+          mostRecent = itemDate;
+        }
+      }
+    }
+    return mostRecent || new Date();
+  }, []);
+
+  // Filter data by time range (from most recent date in data, not today)
+  const filterByTimeRange = useCallback((dataArray, days, referenceDate) => {
     if (!dataArray || dataArray.length === 0) return dataArray;
 
-    const now = new Date();
-    const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(referenceDate.getTime() - days * 24 * 60 * 60 * 1000);
 
     return dataArray.filter(item => {
       // Try to parse the date from fullDate or date field
@@ -98,9 +116,18 @@ export const useAnalytics = () => {
 
     const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
 
-    // Filter data by time range
-    const filteredImpressions = filterByTimeRange(data.impressionsData || [], days);
-    const filteredEngagement = filterByTimeRange(data.engagementData || [], days);
+    // Find the most recent date in the data to use as reference
+    // This way "last 7 days" means "7 days before the most recent data point"
+    const allData = [...(data.impressionsData || []), ...(data.engagementData || [])];
+    const mostRecentDate = findMostRecentDate(allData);
+    console.log('Most recent date in data:', mostRecentDate, 'Filtering for last', days, 'days');
+
+    // Filter data by time range from the most recent date
+    const filteredImpressions = filterByTimeRange(data.impressionsData || [], days, mostRecentDate);
+    const filteredEngagement = filterByTimeRange(data.engagementData || [], days, mostRecentDate);
+
+    console.log('Filtered impressions:', filteredImpressions.length, 'of', (data.impressionsData || []).length);
+    console.log('Filtered engagement:', filteredEngagement.length, 'of', (data.engagementData || []).length);
 
     // Create analytics object from filtered data
     const analyticsData = {
@@ -108,7 +135,8 @@ export const useAnalytics = () => {
       engagementData: filteredEngagement
     };
 
-    // Filter top posts by date range too
+    // Filter top posts by date range too (relative to most recent date)
+    const cutoffDate = new Date(mostRecentDate.getTime() - days * 24 * 60 * 60 * 1000);
     const filteredTopPosts = (data.topPosts || []).filter(post => {
       if (!post.date) return true;
       // Parse relative dates like "2 days ago", "Yesterday", etc.
@@ -122,8 +150,7 @@ export const useAnalytics = () => {
       // For absolute dates, try parsing
       const postDate = new Date(post.date);
       if (!isNaN(postDate.getTime())) {
-        const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-        return postDate >= cutoff;
+        return postDate >= cutoffDate;
       }
       return true;
     });
@@ -149,7 +176,7 @@ export const useAnalytics = () => {
     if (analyticsData.impressionsData.length > 0 || analyticsData.engagementData.length > 0) {
       setInsights(generateInsights(analyticsData, filteredTopPosts, data.hookPerformance || []));
     }
-  }, [filterByTimeRange]);
+  }, [filterByTimeRange, findMostRecentDate]);
 
   // Import CSV files
   const importCSV = useCallback(async (files) => {
