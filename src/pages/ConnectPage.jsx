@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles, CheckCircle2 } from 'lucide-react';
 
-export const ConnectPage = ({ onConnect, isConnecting }) => {
+export const ConnectPage = ({ onConnect, isConnecting, error }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white flex items-center justify-center p-6">
       <div className="max-w-md w-full">
@@ -36,8 +36,14 @@ export const ConnectPage = ({ onConnect, isConnecting }) => {
           </ul>
         </div>
 
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
         <button
-          onClick={onConnect}
+          onClick={() => onConnect(false)}
           disabled={isConnecting}
           className="w-full py-4 px-6 bg-black hover:bg-gray-900 border border-gray-700 rounded-xl font-semibold flex items-center justify-center gap-3 transition-all disabled:opacity-50"
         >
@@ -60,7 +66,8 @@ export const ConnectPage = ({ onConnect, isConnecting }) => {
 
         {/* Demo Mode Button */}
         <button
-          onClick={onConnect}
+          onClick={() => onConnect(true)}
+          disabled={isConnecting}
           className="w-full mt-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
         >
           Or try with demo data →
