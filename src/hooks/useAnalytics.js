@@ -185,6 +185,11 @@ export const useAnalytics = () => {
     if (analyticsData.impressionsData.length > 0 || analyticsData.engagementData.length > 0) {
       setInsights(generateInsights(analyticsData, filteredTopPosts, data.hookPerformance || []));
     }
+
+    // Debug: Log the totals
+    const totalImp = filteredImpressions.reduce((sum, d) => sum + (d.impressions || 0), 0);
+    console.log('Total impressions after filter:', totalImp);
+    console.log('Raw data summary:', data.summary);
   }, [filterByTimeRange, findMostRecentDate]);
 
   // Import CSV files
@@ -365,9 +370,16 @@ export const useAnalytics = () => {
   }, [isConnected, fetchAnalytics, isCSVMode]);
 
   // Calculate summary metrics
+  // For "All Time", use the raw CSV summary totals to ensure we show ALL data
+  const useRawTotals = timeRange === 'all' && csvData?.summary;
+
   const summaryMetrics = analytics ? {
-    totalImpressions: analytics.impressionsData?.reduce((sum, d) => sum + (d.impressions || 0), 0) || 0,
-    totalLikes: analytics.engagementData?.reduce((sum, d) => sum + (d.likes || 0), 0) || 0,
+    totalImpressions: useRawTotals
+      ? (csvData.summary.totalImpressions || 0)
+      : (analytics.impressionsData?.reduce((sum, d) => sum + (d.impressions || 0), 0) || 0),
+    totalLikes: useRawTotals
+      ? (csvData.summary.totalLikes || 0)
+      : (analytics.engagementData?.reduce((sum, d) => sum + (d.likes || 0), 0) || 0),
     totalRetweets: analytics.engagementData?.reduce((sum, d) => sum + (d.retweets || 0), 0) || 0,
     totalReplies: analytics.engagementData?.reduce((sum, d) => sum + (d.replies || 0), 0) || 0,
     currentFollowers: analytics.impressionsData?.[analytics.impressionsData.length - 1]?.followers || 0,
@@ -375,6 +387,8 @@ export const useAnalytics = () => {
     // Video metrics if available
     totalViews: csvData?.videoAnalytics?.summary?.totalViews || 0,
     totalWatchTime: csvData?.videoAnalytics?.summary?.totalWatchTimeMinutes || 0,
+    // Include raw totals for debugging
+    rawTotalImpressions: csvData?.summary?.totalImpressions || 0,
   } : null;
 
   // Get counts for display
